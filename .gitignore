@@ -5,3 +5,7 @@
 # Except this file because it specifies top-level module name,
 # Verilog version, etc.
 !/NanoProcessor/impl/project_process_config.json
+
+# File generated during synthesis and placing & routing.
+# Gowin FPGA Designer automatically recreates it.
+/NanoProcessor/NanoProcessor.gprj.user

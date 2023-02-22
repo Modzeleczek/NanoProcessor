@@ -3,6 +3,14 @@
 <Project>
     <Template>FPGA</Template>
     <Version>5</Version>
-    <Device name="" pn="">gw1nr9c-004</Device>
-    <FileList/>
+    <Device name="GW1NR-9C" pn="GW1NR-LV9QN88PC6/I5">gw1nr9c-004</Device>
+    <FileList>
+        <File path="src/NanoProcessor.v" type="file.verilog" enable="1"/>
+        <File path="src/counter.v" type="file.verilog" enable="1"/>
+        <File path="src/decoder_3_to_8.v" type="file.verilog" enable="1"/>
+        <File path="src/full_adder.v" type="file.verilog" enable="1"/>
+        <File path="src/register.v" type="file.verilog" enable="1"/>
+        <File path="src/ripple_carry_adder_subtractor.v" type="file.verilog" enable="1"/>
+        <File path="src/timer.v" type="file.verilog" enable="1"/>
+    </FileList>
 </Project>
