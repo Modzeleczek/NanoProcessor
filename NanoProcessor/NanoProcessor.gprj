@@ -12,5 +12,6 @@
         <File path="src/register.v" type="file.verilog" enable="1"/>
         <File path="src/ripple_carry_adder_subtractor.v" type="file.verilog" enable="1"/>
         <File path="src/timer.v" type="file.verilog" enable="1"/>
+        <File path="src/pins.cst" type="file.cst" enable="1"/>
     </FileList>
 </Project>

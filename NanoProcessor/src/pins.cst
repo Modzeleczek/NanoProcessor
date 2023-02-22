@@ -1,0 +1,16 @@
+/* According to Tang_Nano_9K_3672_Schematic.pdf, 27 MHz clock signal generated
+by on-board crystal oscillator goes into pin 52 of GW1NR-9 FPGA
+integrated circuit. */
+IO_LOC "clock" 52;
+
+/* NanoProcessor GPIO register outputs should be connected to 9 adjacent
+goldpins of Tang Nano 9K board. */
+IO_LOC "gpio[0]" 38;
+IO_LOC "gpio[1]" 37;
+IO_LOC "gpio[2]" 36;
+IO_LOC "gpio[3]" 39;
+IO_LOC "gpio[4]" 25;
+IO_LOC "gpio[5]" 26;
+IO_LOC "gpio[6]" 27;
+IO_LOC "gpio[7]" 28;
+IO_LOC "gpio[8]" 29;
