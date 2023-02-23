@@ -10,6 +10,7 @@
         <File path="src/counter.v" type="file.verilog" enable="1"/>
         <File path="src/decoder_3_to_8.v" type="file.verilog" enable="1"/>
         <File path="src/full_adder.v" type="file.verilog" enable="1"/>
+        <File path="src/processor.v" type="file.verilog" enable="1"/>
         <File path="src/register.v" type="file.verilog" enable="1"/>
         <File path="src/ripple_carry_adder_subtractor.v" type="file.verilog" enable="1"/>
         <File path="src/timer.v" type="file.verilog" enable="1"/>
