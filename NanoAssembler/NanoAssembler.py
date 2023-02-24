@@ -6,7 +6,7 @@ import sys
 from typing import TextIO
 import codecs
 
-class Assembler():
+class Assembler:
   WHITESPACE = 0
   NEWLINE = 1
   COMMENT = 2
@@ -30,7 +30,7 @@ class Assembler():
     newlines = "\r\n"
 
     state = self.WHITESPACE
-    token = None
+    text_token = None
     while True:
       char = source.read(1)
       if not char: # Reached end of the source.
@@ -39,7 +39,7 @@ class Assembler():
           case self.NEWLINE:
             return "\n"
           case self.TEXT:
-            return token
+            return text_token
           case _: # default
             return None
 
@@ -55,7 +55,7 @@ class Assembler():
             # With 'yield' we can pause and then resume this function
             # coming back to this line and context (variables' values)
             # the next time we call this function.
-            yield token # End text token.
+            yield text_token # End text token.
             state = self.NEWLINE
 
       elif char in whitespaces: # Whitespace token character met.
@@ -68,7 +68,7 @@ class Assembler():
           case self.COMMENT:
             pass # A comment ends only at newline character.
           case self.TEXT:
-            yield token
+            yield text_token
             state = self.WHITESPACE
 
       elif char == ";": # Comment token beginning met.
@@ -81,22 +81,22 @@ class Assembler():
           case self.COMMENT:
             pass
           case self.TEXT:
-            yield token
+            yield text_token
             state = self.COMMENT
 
       else: # Text token character met.
         match state:
           case self.WHITESPACE:
             state = self.TEXT
-            token = char # Start a new text token.
+            text_token = char # Start a new text token.
           case self.NEWLINE:
             yield "\n"
             state = self.TEXT
-            token = char
+            text_token = char
           case self.COMMENT:
             pass
           case self.TEXT:
-            token += char # Append the character to the current text token.
+            text_token += char # Append the character to the current text token.
 
 def parse_commandline_arguments():
   # https://stackoverflow.com/a/30493366
