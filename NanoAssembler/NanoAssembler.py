@@ -6,10 +6,107 @@ import sys
 from typing import TextIO
 import codecs
 
-class Assembler:
+class Assembler():
+  INITIAL = 0
+  WHITESPACE = 1
+  NEWLINE = 2
+  COMMENT = 3
+  TEXT = 4
+
   def assemble(self, source: TextIOWrapper,
     target: TextIO | TextIOWrapper) -> None:
-    pass
+    source.seek(0, 0)
+    for token in self.tokenize(source):
+      if token == "\n":
+        target.write("~")
+      else:
+        target.write(token)
+
+  # This function is a coroutine (https://en.wikipedia.org/wiki/Coroutine)
+  # because it is paused using 'yield' and resumed by being called again.
+  def tokenize(self, source: TextIOWrapper) -> str:
+    # Unicode has many whitespace characters
+    # but we handle only the common U+0020.
+    whitespaces = " "
+    newlines = "\r\n"
+
+    state = self.INITIAL
+    token = None
+    while True:
+      char = source.read(1)
+      if not char: # Reached end of the source.
+        # Final 'return'.
+        match state:
+          case self.NEWLINE:
+            return "\n"
+          case self.TEXT:
+            return token
+          case _: # default
+            return None
+
+      elif char in newlines: # Newline (separator) token character met.
+        match state:
+          case self.INITIAL:
+            state = self.NEWLINE
+          case self.WHITESPACE:
+            state = self.NEWLINE
+          case self.NEWLINE:
+            pass
+          case self.COMMENT:
+            state = self.NEWLINE
+          case self.TEXT:
+            # With 'yield' we can pause and then resume this function
+            # coming back to this line and context (variables' values)
+            # the next time we call this function.
+            yield token # End text token.
+            state = self.NEWLINE
+
+      elif char in whitespaces: # Whitespace token character met.
+        match state:
+          case self.INITIAL:
+            state = self.WHITESPACE
+          case self.WHITESPACE:
+            pass
+          case self.NEWLINE:
+            yield "\n" # End newline token (separator).
+            state = self.WHITESPACE
+          case self.COMMENT:
+            pass # A comment ends only at newline character.
+          case self.TEXT:
+            yield token
+            state = self.WHITESPACE
+
+      elif char == ";": # Comment token beginning met.
+        match state:
+          case self.INITIAL:
+            state = self.COMMENT
+          case self.WHITESPACE:
+            state = self.COMMENT
+          case self.NEWLINE:
+            yield "\n"
+            state = self.COMMENT
+          case self.COMMENT:
+            pass
+          case self.TEXT:
+            yield token
+            state = self.COMMENT
+
+      else: # Text token character met.
+        match state:
+          case self.INITIAL:
+            state = self.TEXT
+            token = char # Start a new text token.
+          case self.WHITESPACE:
+            state = self.TEXT
+            token = char
+          case self.NEWLINE:
+            yield "\n"
+            state = self.TEXT
+            token = char
+          case self.COMMENT:
+            pass
+          case self.TEXT:
+            token += char # Append the character to the current text token.
 
 def parse_commandline_arguments():
   # https://stackoverflow.com/a/30493366
