@@ -7,11 +7,10 @@ from typing import TextIO
 import codecs
 
 class Assembler():
-  INITIAL = 0
-  WHITESPACE = 1
-  NEWLINE = 2
-  COMMENT = 3
-  TEXT = 4
+  WHITESPACE = 0
+  NEWLINE = 1
+  COMMENT = 2
+  TEXT = 3
 
   def assemble(self, source: TextIOWrapper,
     target: TextIO | TextIOWrapper) -> None:
@@ -30,7 +29,7 @@ class Assembler():
     whitespaces = " "
     newlines = "\r\n"
 
-    state = self.INITIAL
+    state = self.WHITESPACE
     token = None
     while True:
       char = source.read(1)
@@ -46,8 +45,6 @@ class Assembler():
 
       elif char in newlines: # Newline (separator) token character met.
         match state:
-          case self.INITIAL:
-            state = self.NEWLINE
           case self.WHITESPACE:
             state = self.NEWLINE
           case self.NEWLINE:
@@ -63,8 +60,6 @@ class Assembler():
 
       elif char in whitespaces: # Whitespace token character met.
         match state:
-          case self.INITIAL:
-            state = self.WHITESPACE
           case self.WHITESPACE:
             pass
           case self.NEWLINE:
@@ -78,8 +73,6 @@ class Assembler():
 
       elif char == ";": # Comment token beginning met.
         match state:
-          case self.INITIAL:
-            state = self.COMMENT
           case self.WHITESPACE:
             state = self.COMMENT
           case self.NEWLINE:
@@ -93,12 +86,9 @@ class Assembler():
 
       else: # Text token character met.
         match state:
-          case self.INITIAL:
-            state = self.TEXT
-            token = char # Start a new text token.
           case self.WHITESPACE:
             state = self.TEXT
-            token = char
+            token = char # Start a new text token.
           case self.NEWLINE:
             yield "\n"
             state = self.TEXT
