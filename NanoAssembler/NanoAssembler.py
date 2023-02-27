@@ -41,16 +41,13 @@ class Assembler:
               # (e.g. 'for unclassified_token in tokenizer:')
               # breaks on returned value, only processes yielded values.
               yield "\n"
-              return None
             # else last_newline_char == "\n" -
             # A newline token for "\n" has already been returned.
             # 'None' returned by the generator breaks a 'for in' loop.
             return None
           case states.TEXT:
             yield text_token
-            return None
-          case _: # default
-            return None
+        return None
 
       elif char in "\r\n": # Newline (separator) token character met.
         match state:
