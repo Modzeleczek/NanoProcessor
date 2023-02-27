@@ -37,12 +37,18 @@ class Assembler:
           case states.WHITESPACE:
             # Return a newline token for an unterminated "\r".
             if last_newline_char == "\r":
-              return "\n"
+              # Firstly 'yield', because the user of 'tokenize' generator
+              # (e.g. 'for unclassified_token in tokenizer:')
+              # breaks on returned value, only processes yielded values.
+              yield "\n"
+              return None
             # else last_newline_char == "\n" -
             # A newline token for "\n" has already been returned.
-            return None # 'None' returned by the generator breaks a 'for' loop.
+            # 'None' returned by the generator breaks a 'for in' loop.
+            return None
           case states.TEXT:
-            return text_token
+            yield text_token
+            return None
           case _: # default
             return None
 
