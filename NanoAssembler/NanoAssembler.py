@@ -282,16 +282,193 @@ class NullWriter(Writer):
 class Assembler(object):
   def assemble(self, source: TextIOWrapper,
     target: TextIO | TextIOWrapper) -> None:
+    # Validate the source assembly code.
+    # Locate label declarations.
+    label_lister = LabelLister()
+    error = self.__parse(source,
+      label_lister,
+      NullLabelReferencer(),
+      NullWriter())
+    for warning in label_lister.get_warnings():
+      print(warning)
+
+    if error is not None: # Code has an error.
+      print(error)
+
+    else: # Code is valid.
+      # Translate instructions and literals (numeric values) to binary words.
+      self.__parse(source,
+        NullLabelLister(),
+        LabelReferencer(label_lister.get_labels()),
+        Writer(target))
+      # Do not check for warnings and an error again
+      # because code was already validated.
+
+  # Pass a base LabelLister, LabelReferencer or Writer object
+  # with empty method definitions to disable the corresponding feature.
+  def __parse(self, source: TextIOWrapper,
+    label_lister: LabelLister,
+    label_referencer: LabelReferencer,
+    writer: Writer) -> str:
+    states = SimpleNamespace()
+    states.INITIAL = 0
+    # states.LABEL_DECLARATION # This state only complicates the state machine.
+    states.REGISTER_INSTRUCTION = 1
+    states.REGISTER_INSTRUCTON_1_OPERAND = 2
+    states.REGISTER_INSTRUCTON_2_OPERANDS = 3
+    states.IMMEDIATE_INSTRUCTION = 4
+    states.IMMEDIATE_INSTRUCTION_1_OPERAND = 5
+    states.IMMEDIATE_INSTRUCTION_1_OPERAND_NEWLINE = 6
+    # Data words, not to be executed by the processor.
+    states.LITERAL = 7
+
+    state = states.INITIAL
+
+    # Start counting source code lines from 1.
+    line_index = 1
+
+    def unexpected_token(token: Token) -> str:
+      return "Error: Unexpected {} in line {}."\
+        .format(token.describe(), line_index)
+
+    def undeclared_label(label: LabelReference) -> str:
+      return "Error: Reference to undeclared label '{}' in line {}."\
+        .format(label.name(), line_index)
+
     source.seek(0, 0)
-    for token in self.tokenize(source):
-      if token == "\n":
-        target.write("~")
-      else:
-        target.write(token)
+    tokenizer = self.__tokenize(source)
+    # Traverse the source code token by token with a state machine.
+    for unclassified_token in tokenizer:
+      token = self.__classify_token(unclassified_token)
+      if token is None: # Unrecognized token type.
+        return "Error: Unrecognized token '{}' in line {}."\
+          .format(unclassified_token, line_index)
+
+      match state:
+        case states.INITIAL:
+          match token: # Operation dependent on token type.
+            case Newline(): # Do not change state.
+              line_index += 1
+            case LabelDeclaration(): # Do not change state.
+              label_lister.add_pending_label(token, line_index)
+            case RegisterInstruction():
+              state = states.REGISTER_INSTRUCTION
+              writer.print(token.code(), 3)
+            case ImmediateInstruction():
+              state = states.IMMEDIATE_INSTRUCTION
+              writer.print(token.code(), 3)
+            case Literal():
+              state = states.LITERAL
+              label_lister.flush_pending_labels()
+              # 'Is' compares only references.
+              # 'LabelReference' is a metaclass and a singleton.
+              # 'LabelReference' identifier used in code works as a
+              # reference to the sole instance of 'LabelReference'
+              # metaclass.
+              if isinstance(token, LabelReference):
+                position = label_referencer.get_label_position(token.name())
+                if position is not None:
+                  writer.print(position, 9, "\n")
+                else:
+                  return undeclared_label(token)
+              else: # isinstance(token, NumericLiteral):
+                writer.print(token.value(), 9, "\n")
+            case _:
+              return unexpected_token(token)
+
+        # Register instruction
+        case states.REGISTER_INSTRUCTION:
+          match token:
+            case Register():
+              state = states.REGISTER_INSTRUCTON_1_OPERAND
+              writer.print(token.code(), 3)
+            case _:
+              return unexpected_token(token)
+
+        case states.REGISTER_INSTRUCTON_1_OPERAND:
+          match token:
+            case Register():
+              state = states.REGISTER_INSTRUCTON_2_OPERANDS
+              label_lister.flush_pending_labels()
+              writer.print(token.code(), 3, "\n")
+            case _:
+              return unexpected_token(token)
+          
+        case states.REGISTER_INSTRUCTON_2_OPERANDS:
+          match token:
+            case Newline():
+              state = states.INITIAL
+              line_index += 1
+            case _:
+              return unexpected_token(token)
+        # Register instruction
+
+        # Immediate instruction
+        case states.IMMEDIATE_INSTRUCTION:
+          match token:
+            case Register():
+              state = states.IMMEDIATE_INSTRUCTION_1_OPERAND
+              label_lister.flush_pending_labels()
+              writer.print(token.code(), 3)
+              writer.print(0, 3, "\n")
+            case _:
+              return unexpected_token(token)
+
+        case states.IMMEDIATE_INSTRUCTION_1_OPERAND:
+          match token:
+            case Newline():
+              state = states.IMMEDIATE_INSTRUCTION_1_OPERAND_NEWLINE
+              line_index += 1
+            case _:
+              return unexpected_token(token)
+
+        case states.IMMEDIATE_INSTRUCTION_1_OPERAND_NEWLINE:
+          match token:
+            case Newline():
+              # Skip multiple newlines. Do not change state.
+              line_index += 1
+            case LabelDeclaration():
+              # Do not change state.
+              label_lister.add_pending_label(token, line_index)
+            case Literal():
+              state = states.LITERAL
+              label_lister.flush_pending_labels()
+              if isinstance(token, LabelReference):
+                  position = label_referencer.get_label_position(token.name())
+                  if position is not None:
+                    writer.print(position, 9, "\n")
+                  else:
+                    return undeclared_label(token)
+              else:
+                writer.print(token.value(), 9, "\n")
+            case _:
+              return unexpected_token(token)
+        # Immediate instruction
+
+        case states.LITERAL:
+          match token:
+            case Newline():
+              state = states.INITIAL
+              line_index += 1
+            case _:
+              return unexpected_token(token)
+    # for
+    return None
+
+  def __classify_token(self, token: str) -> Token:
+    # Equivalent to C#: if ((Newline.TryParse(token, out ret)) != false)
+    if (ret := Newline.try_parse(token)) is not None: return ret
+    if (ret := LabelDeclaration.try_parse(token)) is not None: return ret
+    if (ret := RegisterInstruction.try_parse(token)) is not None: return ret
+    if (ret := ImmediateInstruction.try_parse(token)) is not None: return ret
+    if (ret := Register.try_parse(token)) is not None: return ret
+    if (ret := LabelReference.try_parse(token)) is not None: return ret
+    if (ret := NumericLiteral.try_parse(token)) is not None: return ret
+    return None
 
   # This function is a coroutine (https://en.wikipedia.org/wiki/Coroutine)
   # because it is paused using 'yield' and resumed by being called again.
-  def tokenize(self, source: TextIOWrapper) -> str:
+  def __tokenize(self, source: TextIOWrapper) -> str:
     states = SimpleNamespace()
     states.WHITESPACE = 0
     states.NEWLINE = 1

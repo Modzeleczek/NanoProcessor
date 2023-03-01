@@ -11,27 +11,29 @@ init_counter:
 
 after_init_counter:
   mvi R4 ; Remember the address of the first instruction inside the loop over data words
-  inside_loop
+  :inside_loop
 
   sub R2 R0 ; R2 -= 1
 
   mvnz PC R4 ; If R2 != 0, jump to the inside of the loop
 
   mvi PC ; Otherwise, jump to resetting the loop counter
-  init_counter
+  :init_counter
 
 inside_loop:
   mvi R5 ; R5 = <address of the top end word> - 1
-  before_data
+  :before_data
 
   ; In R5 remember the current data word index (<top end word address> + <counter>)
   add R5 R2 ; R5 += R2
 
   ld R3 R5 ; R3 = [R5]
-  st R1 R3 ; [R1] = R3
+  ; Note that in 'st' instruction, the destination is the second operand.
+  ; It is beacuse of NanoProcessor's hardware implementation details.
+  st R3 R1 ; [R1] = R3
   mvi PC ; Unconditional jump to after_init_counter
 before_data:
-  after_init_counter
+  :after_init_counter
 
   ; Consecutive words written into GPIO register.
   ; We iterate over them using R2 counter starting at the bottom end.
