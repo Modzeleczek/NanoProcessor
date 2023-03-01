@@ -279,7 +279,7 @@ class NullWriter(Writer):
     pass
 # Parser workers
 
-class Assembler(object):
+class Parser(object):
   # Parser states
   class State(object):
     # Single '_' means protected method access modifier.
@@ -292,7 +292,7 @@ class Assembler(object):
         .format(label.name(), line_index)
 
   class Initial(State):
-    def parse_token(self, ctx: Assembler, token: Token) -> str:
+    def parse_token(self, ctx: Parser, token: Token) -> str:
       # INITIAL
       match token: # Operation dependent on token type.
         case Newline(): # Do not change state.
@@ -300,13 +300,13 @@ class Assembler(object):
         case LabelDeclaration(): # Do not change state.
           ctx.label_lister.add_pending_label(token, ctx.line_index)
         case RegisterInstruction():
-          ctx.state = Assembler.RegisterInstruction()
+          ctx.state = Parser.RegisterInstruction()
           ctx.writer.print(token.code(), 3)
         case ImmediateInstruction():
-          ctx.state = Assembler.ImmediateInstruction()
+          ctx.state = Parser.ImmediateInstruction()
           ctx.writer.print(token.code(), 3)
         case Literal():
-          ctx.state = Assembler.Literal()
+          ctx.state = Parser.Literal()
           ctx.label_lister.flush_pending_labels()
           # 'Is' compares only references.
           # 'LabelReference' is a metaclass and a singleton.
@@ -328,7 +328,7 @@ class Assembler(object):
     def __init__(self) -> None:
       self.__substate = 0
 
-    def parse_token(self, ctx: Assembler, token: Token) -> str:
+    def parse_token(self, ctx: Parser, token: Token) -> str:
       operations = [
         self.__parse_1st_register,
         self.__parse_2nd_register,
@@ -339,31 +339,31 @@ class Assembler(object):
         return error
       self.__substate += 1
 
-    def __parse_1st_register(self, ctx: Assembler, token: Token) -> str:
+    def __parse_1st_register(self, ctx: Parser, token: Token) -> str:
       # After register instruction name
       if not isinstance(token, Register):
         return self.unexpected_token(token)
       ctx.writer.print(token.code(), 3)
 
-    def __parse_2nd_register(self, ctx: Assembler, token: Token) -> str:
+    def __parse_2nd_register(self, ctx: Parser, token: Token) -> str:
       # After 1 operand (register)
       if not isinstance(token, Register):
         return self.unexpected_token(token)
       ctx.label_lister.flush_pending_labels()
       ctx.writer.print(token.code(), 3, "\n")
 
-    def __parse_newline(self, ctx: Assembler, token: Token) -> str:
+    def __parse_newline(self, ctx: Parser, token: Token) -> str:
       # After 2 operands (registers)
       if not isinstance(token, Newline):
         return self.unexpected_token(token)
-      ctx.state = Assembler.Initial()
+      ctx.state = Parser.Initial()
       ctx.line_index += 1
 
   class ImmediateInstruction(State):
     def __init__(self) -> None:
       self.__substate = 0
 
-    def parse_token(self, ctx: Assembler, token: Token) -> str:
+    def parse_token(self, ctx: Parser, token: Token) -> str:
       operations = [
         self.__parse_register,
         self.__parse_newline,
@@ -373,7 +373,7 @@ class Assembler(object):
       if error is not None:
         return error
 
-    def __parse_register(self, ctx: Assembler, token: Token) -> str:
+    def __parse_register(self, ctx: Parser, token: Token) -> str:
       # After immediate instruction name
       if not isinstance(token, Register):
         return self.unexpected_token(token)
@@ -382,14 +382,14 @@ class Assembler(object):
       ctx.writer.print(0, 3, "\n")
       self.__substate += 1
 
-    def __parse_newline(self, ctx: Assembler, token: Token) -> str:
+    def __parse_newline(self, ctx: Parser, token: Token) -> str:
       # After 1 operand (register)
       if not isinstance(token, Newline):
         return self.unexpected_token(token)
       ctx.line_index += 1
       self.__substate += 1
 
-    def __parse_literal(self, ctx: Assembler, token: Token) -> str:
+    def __parse_literal(self, ctx: Parser, token: Token) -> str:
       # After 1 operand and newline
       match token:
         case Newline(): # Skip multiple newlines. Do not change state.
@@ -397,7 +397,7 @@ class Assembler(object):
         case LabelDeclaration(): # Do not change state.
           ctx.label_lister.add_pending_label(token, ctx.line_index)
         case Literal():
-          ctx.state = Assembler.Literal()
+          ctx.state = Parser.Literal()
           ctx.label_lister.flush_pending_labels()
           if isinstance(token, LabelReference):
             position = ctx.label_referencer.get_label_position(token.name())
@@ -412,40 +412,15 @@ class Assembler(object):
 
   # Data words, not to be executed by the processor.
   class Literal(State):
-    def parse_token(self, ctx: Assembler, token: Token) -> str:
+    def parse_token(self, ctx: Parser, token: Token) -> str:
       if not isinstance(token, Newline):
         return self.unexpected_token(token)
-      ctx.state = Assembler.Initial()
+      ctx.state = Parser.Initial()
       ctx.line_index += 1
   # Parser states
 
-  def assemble(self, source: TextIOWrapper,
-    target: TextIO | TextIOWrapper) -> None:
-    # Validate the source assembly code.
-    # Locate label declarations.
-    real_lister = LabelLister()
-    self.label_lister = real_lister
-    self.label_referencer = NullLabelReferencer()
-    self.writer = NullWriter()
-
-    error = self.__parse(source)
-    for warning in real_lister.get_warnings():
-      print(warning)
-
-    if error is not None: # Code has an error.
-      print(error)
-
-    else: # Code is valid.
-      # Translate instructions and literals (numeric values) to binary words.
-      self.label_lister = NullLabelLister()
-      self.label_referencer = LabelReferencer(real_lister.get_labels())
-      self.writer = Writer(target)
-      self.__parse(source)
-      # Do not check for warnings and an error again
-      # because code has already been validated.
-
-  def __parse(self, source: TextIOWrapper) -> str:
-    self.state = Assembler.Initial()
+  def parse(self, source: TextIOWrapper) -> str:
+    self.state = Parser.Initial()
 
     # Start counting source code lines from 1.
     self.line_index = 1
@@ -595,6 +570,32 @@ class Assembler(object):
           case states.TEXT:
             text_token += char # Append the character to the current text token.
 
+def assemble(source: TextIOWrapper,
+  target: TextIO | TextIOWrapper) -> None:
+  # Validate the source assembly code.
+  # Locate label declarations.
+  parser = Parser()
+  real_lister = LabelLister()
+  parser.label_lister = real_lister
+  parser.label_referencer = NullLabelReferencer()
+  parser.writer = NullWriter()
+
+  error = parser.parse(source)
+  for warning in real_lister.get_warnings():
+    print(warning)
+
+  if error is not None: # Code has an error.
+    print(error)
+
+  else: # Code is valid.
+    # Translate instructions and literals (numeric values) to binary words.
+    parser.label_lister = NullLabelLister()
+    parser.label_referencer = LabelReferencer(real_lister.get_labels())
+    parser.writer = Writer(target)
+    parser.parse(source)
+    # Do not check for warnings and an error again
+    # because code has already been validated.
+
 def parse_commandline_arguments():
   # https://stackoverflow.com/a/30493366
   # https://docs.python.org/3/library/argparse.html
@@ -670,13 +671,12 @@ def main():
       source_encoding = detected_encoding
 
   with open(args.source, "r", encoding=source_encoding) as source:
-    assembler = Assembler()
     # Check if 'target' parameter is specified.
     if args.target is not None:
       with open(args.target, "w", encoding="utf_8") as file_stream:
-        assembler.assemble(source, file_stream)
+        assemble(source, file_stream)
     else:
-      assembler.assemble(source, sys.stdout)
+      assemble(source, sys.stdout)
 
   return 0
 
