@@ -465,14 +465,18 @@ class Assembler(object):
     return None
 
   def __classify_token(self, token: str) -> Token:
-    # Equivalent to C#: if ((Newline.TryParse(token, out ret)) != false)
-    if (ret := Newline.try_parse(token)) is not None: return ret
-    if (ret := LabelDeclaration.try_parse(token)) is not None: return ret
-    if (ret := RegisterInstruction.try_parse(token)) is not None: return ret
-    if (ret := ImmediateInstruction.try_parse(token)) is not None: return ret
-    if (ret := Register.try_parse(token)) is not None: return ret
-    if (ret := LabelReference.try_parse(token)) is not None: return ret
-    if (ret := NumericLiteral.try_parse(token)) is not None: return ret
+    types = [
+      Newline,
+      LabelDeclaration,
+      RegisterInstruction,
+      ImmediateInstruction,
+      Register,
+      LabelReference,
+      NumericLiteral
+    ]
+    for t in types:
+      # Equivalent to C#: if ((Newline.TryParse(token, out ret)) != false)
+      if (ret := t.try_parse(token)) is not None: return ret
     return None
 
   # This function is a coroutine (https://en.wikipedia.org/wiki/Coroutine)
