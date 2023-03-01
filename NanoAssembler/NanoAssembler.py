@@ -6,6 +6,8 @@ import sys
 from typing import TextIO
 import codecs
 from types import SimpleNamespace
+from collections import deque
+
 # Token types
 class Token(object):
   # Consider this abstract method.
@@ -195,7 +197,89 @@ class NumericLiteral(Literal):
     return NumericLiteral.__value(self.__raw)
 # Token types
 
-class Assembler:
+# Parser workers
+class LabelLister(object):
+  def __init__(self) -> None:
+    # A double-ended queue for storing names of labels
+    # that need to have their memory positions calculated before
+    # they can be added to 'labels'.
+    self.__pending_labels = deque[LabelDeclaration]()
+    self.__labels = dict[str, int]() # Label and its memory address.
+    self.__warnings = deque[str]()
+    # Start counting translated memory words from 0.
+    self.__memory_word_index = 0
+
+  def add_pending_label(self, label: LabelDeclaration, line_index: int) -> None:
+    label.set_line_index(line_index)
+    self.__pending_labels.append(label)
+
+  def flush_pending_labels(self) -> None:
+    # Set pending labels to the current word address (index)
+    # and clear pending label queue.
+    for label in self.__pending_labels:
+      label_name = label.name()
+      if label_name in self.__labels:
+        self.__warnings.append("Warning: Label '{}' redeclared in line {}."
+          .format(label_name, label.get_line_index()))
+      # Redeclaration produces a warning and overwrites the label's position.
+      self.__labels[label_name] = self.__memory_word_index
+    self.__pending_labels.clear()
+    self.__memory_word_index += 1
+
+  def get_labels(self) -> dict[str, int]:
+    return self.__labels
+  
+  def get_warnings(self) -> deque[str]:
+    return self.__warnings
+
+# NullObject design pattern
+class NullLabelLister(LabelLister):
+  def __init__(self) -> None:
+    pass
+
+  def add_pending_label(self, label: LabelDeclaration, line_index: int) -> None:
+    pass
+
+  def flush_pending_labels(self) -> None:
+    pass
+
+class LabelReferencer(object):
+  def __init__(self, labels: dict[str, int]) -> None:
+    self.__labels = labels
+
+  def get_label_position(self, name: str) -> int:
+    # Return 'None' if label does not exist.
+    if name in self.__labels:
+      return self.__labels[name]
+    return None
+
+class NullLabelReferencer(LabelReferencer):
+  def __init__(self) -> None:
+    pass
+
+  def get_label_position(self, name: str) -> int:
+    return -1
+
+class Writer(object):
+  def __init__(self, target: TextIO | TextIOWrapper) -> None:
+    self.__target = target
+
+  def print(self, number: int, bit_count: int, end: str = "") -> None:
+    bit_string = ""
+    for b in range(0, bit_count):
+      bit_string = str(number % 2) + bit_string
+      number //= 2
+    self.__target.write(bit_string + end)
+
+class NullWriter(Writer):
+  def __init__(self) -> None:
+    pass
+
+  def print(self, number: int, bit_count: int, end: str = "") -> None:
+    pass
+# Parser workers
+
+class Assembler(object):
   def assemble(self, source: TextIOWrapper,
     target: TextIO | TextIOWrapper) -> None:
     source.seek(0, 0)
