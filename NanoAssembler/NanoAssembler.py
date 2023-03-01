@@ -410,7 +410,10 @@ class Parser(object):
       ctx.line_index += 1
   # Parser states
 
-  def parse(self, source: TextIOWrapper) -> str:
+  def parse(self, source: TextIOWrapper, label_lister: LabelLister,
+    writer: Writer) -> str:
+    self.label_lister = label_lister
+    self.writer = writer
     self.state = Parser.Initial()
 
     # Start counting source code lines from 1.
@@ -567,10 +570,7 @@ def assemble(source: TextIOWrapper,
   # Locate label declarations.
   parser = Parser()
   real_lister = LabelLister()
-  parser.label_lister = real_lister
-  parser.writer = NullWriter()
-
-  error = parser.parse(source)
+  error = parser.parse(source, real_lister, NullWriter())
   for warning in real_lister.get_warnings():
     print(warning)
 
@@ -579,11 +579,11 @@ def assemble(source: TextIOWrapper,
 
   else: # Code is valid.
     # Translate instructions and literals (numeric values) to binary words.
-    parser.label_lister = NullLabelLister()
-    parser.writer = Writer(target, real_lister.get_labels())
-    parser.parse(source)
-    # Do not check for warnings and an error again
-    # because code has already been validated.
+    error = parser.parse(source, NullLabelLister(),
+      Writer(target, real_lister.get_labels()))
+    # Check if there were no undeclared labels referenced.
+    if error is not None:
+      print(error)
 
 def parse_commandline_arguments():
   # https://stackoverflow.com/a/30493366
