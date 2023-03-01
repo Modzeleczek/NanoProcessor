@@ -6,6 +6,194 @@ import sys
 from typing import TextIO
 import codecs
 from types import SimpleNamespace
+# Token types
+class Token(object):
+  # Consider this abstract method.
+  def describe(self) -> str:
+    raise NotImplementedError("Please implement this method")
+
+class Newline(Token):
+  def try_parse(token: str) -> Newline:
+    if token == "\n":
+      return Newline()
+    return None
+
+  def describe(self) -> str:
+    return "newline"
+
+class LabelDeclaration(Token):
+  def __init__(self, raw: str) -> None:
+    self.__raw = raw
+    # For the index of the line in which the declaration was met.
+    self.__line_index = None
+
+  def try_parse(token: str) -> LabelDeclaration:
+    if token.endswith(":"):
+      return LabelDeclaration(token) # Do not skip ":".
+    return None
+
+  def describe(self) -> str:
+    return "label description token '{}'".format(self.__raw)
+
+  def raw(self) -> str:
+    return self.__raw
+
+  def name(self) -> str:
+    return self.__raw[:-1] # Skip ":".
+
+  def get_line_index(self) -> None: # Getter
+    return self.__line_index
+
+  def set_line_index(self, value: int) -> None: # Setter
+    self.__line_index = value
+
+class Instruction(Token):
+  def __init__(self, raw: str) -> None:
+    self.__raw = raw
+
+  def raw(self) -> str:
+    return self.__raw
+
+  def code(self) -> int:
+    return self.CODES[self.__raw]
+
+class RegisterInstruction(Instruction):
+  CODES = { "mv":0, "add":2, "sub":3, "ld":4, "st":5, "mvnz":6 }
+
+  def __init__(self, raw: str) -> None:
+    super().__init__(raw)
+
+  def try_parse(token: str) -> RegisterInstruction:
+    codes = RegisterInstruction.CODES
+    if token in codes:
+      return RegisterInstruction(token)
+    return None
+
+  def describe(self) -> str:
+    return "register instruction token '{}'".format(self.__raw)
+
+class ImmediateInstruction(Instruction):
+  # 'mvi' is 'immediate' instruction whose second operand must
+  # be specified immediately after the instruction word.
+  CODES = { "mvi":1 }
+
+  def __init__(self, raw: str) -> None:
+    super().__init__(raw)
+
+  def try_parse(token: str) -> ImmediateInstruction:
+    codes = ImmediateInstruction.CODES
+    if token in codes:
+      return ImmediateInstruction(token)
+    return None
+
+  def describe(self) -> str:
+    return "immediate instruction token '{}'".format(self.__raw)
+
+class Register(Instruction):
+  CODES = { "R0":0, "R1":1, "R2":2, "R3":3, "R4":4, "R5":5, "R6":6, "PC":7 }
+
+  def __init__(self, raw: str) -> None:
+    super().__init__(raw)
+
+  def try_parse(token: str) -> Register:
+    codes = Register.CODES
+    if token in codes:
+      return Register(token)
+    return None
+
+  def describe(self) -> str:
+    return "register token '{}'".format(self.__raw)
+
+class Literal(Token): pass
+
+class LabelReference(Literal):
+  def __init__(self, raw: str) -> None:
+    self.__raw = raw
+
+  def try_parse(token: str) -> LabelReference:
+    if token.startswith(":"):
+      return LabelReference(token) # Do not skip ":".
+    return None
+
+  def describe(self) -> str:
+    return "label reference literal token '{}'".format(self.__raw)
+
+  def raw(self) -> str:
+    return self.__raw
+
+  def name(self) -> str:
+    return self.__raw[1:] # Skip ":".
+
+class NumericLiteral(Literal):
+  def __init__(self, raw: str) -> None:
+    self.__raw = raw
+
+  def try_parse(token: str) -> NumericLiteral:
+    if NumericLiteral.__value(token) is not None:
+      return NumericLiteral(token)
+    return None
+
+  def __value(raw: str) -> int:
+    if raw.startswith("0b"): # Binary number literal
+      # Full slice syntax is start(inclusive):stop(exclusive):step
+      # -1 is the index of the last element, -2 is before the last, etc.
+      # If start is omitted, all elements to the left from stop are taken.
+      # If stop is omitted, all elements to the right from start are taken.
+      digits = raw[2:] # Skip "0b".
+      base = 2
+    else: # Decimal number literal
+      digits = raw
+      base = 10
+
+    length = len(digits)
+    if not (length > 0): # Number has no digits.
+      return None
+
+    return NumericLiteral.str_to_int(digits, base)
+
+  def str_to_int(digits: str, base: int) -> int:
+    # Assume that base <= 16
+    # Assume that standard ASCII characters have the same code point
+    # (result of 'ord' function) in all possible source encodings.
+    # e.g. "0" has code point 48, "9" has 57, "a" has 97, etc.
+    digit_values = dict[str]()
+    ord_counter = ord("0")
+    code = 0
+    for i in range(0, min(base, 10)): # Populate up to 9 or less if base < 10.
+      digit_values[chr(ord_counter)] = code
+      ord_counter += 1
+      code += 1
+    ord_counter = ord("a")
+    for i in range(10, base): # Does not run if base <= 10.
+      digit_values[chr(ord_counter)] = code
+      ord_counter += 1
+      code += 1
+
+    length = len(digits)
+    number = 0
+    power = 1 # base^0
+    for i in range(length - 1, -1, -1): # Loop from length - 1 to 0.
+      char = digits[i]
+      if char == "_": # Skip "_".
+        pass
+      elif char in digit_values:
+        number += digit_values[char] * power
+        if number >= 512: # The processor uses 9-bit data and instruction words.
+          return None
+        power *= base
+      else:
+        return None
+    return number
+
+  def describe(self) -> str:
+    return "numeric literal token '{}'".format(self.__raw)
+
+  def raw(self) -> str:
+    return self.__raw
+
+  def value(self) -> int:
+    return NumericLiteral.__value(self.__raw)
+# Token types
 
 class Assembler:
   def assemble(self, source: TextIOWrapper,
