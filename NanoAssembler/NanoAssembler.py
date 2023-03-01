@@ -243,26 +243,11 @@ class NullLabelLister(LabelLister):
   def flush_pending_labels(self) -> None:
     pass
 
-class LabelReferencer(object):
-  def __init__(self, labels: dict[str, int]) -> None:
-    self.__labels = labels
-
-  def get_label_position(self, name: str) -> int:
-    # Return 'None' if label does not exist.
-    if name in self.__labels:
-      return self.__labels[name]
-    return None
-
-class NullLabelReferencer(LabelReferencer):
-  def __init__(self) -> None:
-    pass
-
-  def get_label_position(self, name: str) -> int:
-    return -1
-
 class Writer(object):
-  def __init__(self, target: TextIO | TextIOWrapper) -> None:
+  def __init__(self, target: TextIO | TextIOWrapper,
+    labels: dict[str, int]) -> None:
     self.__target = target
+    self.__labels = labels
 
   def print(self, number: int, bit_count: int, end: str = "") -> None:
     bit_string = ""
@@ -271,12 +256,24 @@ class Writer(object):
       number //= 2
     self.__target.write(bit_string + end)
 
+  def print_dereferenced_label(self, name: str, bit_count: int,
+    end: str = "") -> bool:
+    # Return 'False' if label does not exist.
+    if name not in self.__labels:
+      return False
+    self.print(self.__labels[name], bit_count, end)
+    return True
+
 class NullWriter(Writer):
   def __init__(self) -> None:
     pass
 
   def print(self, number: int, bit_count: int, end: str = "") -> None:
     pass
+
+  def print_dereferenced_label(self, name: str, bit_count: int,
+    end: str = "") -> bool:
+    return True # Pretend success.
 # Parser workers
 
 class Parser(object):
@@ -314,11 +311,8 @@ class Parser(object):
           # reference to the sole instance of 'LabelReference'
           # metaclass.
           if isinstance(token, LabelReference):
-            position = ctx.label_referencer.get_label_position(token.name())
-            if position is not None:
-              ctx.writer.print(position, 9, "\n")
-            else:
-              return self.undeclared_label(token)
+            if not ctx.writer.print_dereferenced_label(token.name(), 9, "\n"):
+              return self.undeclared_label(token, ctx.line_index)
           else: # isinstance(token, NumericLiteral):
             ctx.writer.print(token.value(), 9, "\n")
         case _:
@@ -400,11 +394,8 @@ class Parser(object):
           ctx.state = Parser.Literal()
           ctx.label_lister.flush_pending_labels()
           if isinstance(token, LabelReference):
-            position = ctx.label_referencer.get_label_position(token.name())
-            if position is not None:
-              ctx.writer.print(position, 9, "\n")
-            else:
-              return self.undeclared_label(token)
+            if not ctx.writer.print_dereferenced_label(token.name(), 9, "\n"):
+              return self.undeclared_label(token, ctx.line_index)
           else:
             ctx.writer.print(token.value(), 9, "\n")
         case _:
@@ -433,7 +424,7 @@ class Parser(object):
       if token is None: # Unrecognized token type.
         return "Error: Unrecognized token '{}' in line {}."\
           .format(unclassified_token, self.line_index)
-      
+
       error = self.state.parse_token(self, token)
       if error is not None:
         return error
@@ -577,7 +568,6 @@ def assemble(source: TextIOWrapper,
   parser = Parser()
   real_lister = LabelLister()
   parser.label_lister = real_lister
-  parser.label_referencer = NullLabelReferencer()
   parser.writer = NullWriter()
 
   error = parser.parse(source)
@@ -590,8 +580,7 @@ def assemble(source: TextIOWrapper,
   else: # Code is valid.
     # Translate instructions and literals (numeric values) to binary words.
     parser.label_lister = NullLabelLister()
-    parser.label_referencer = LabelReferencer(real_lister.get_labels())
-    parser.writer = Writer(target)
+    parser.writer = Writer(target, real_lister.get_labels())
     parser.parse(source)
     # Do not check for warnings and an error again
     # because code has already been validated.
