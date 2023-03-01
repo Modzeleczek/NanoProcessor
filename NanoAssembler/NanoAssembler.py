@@ -217,6 +217,10 @@ class Assembler:
     state = states.WHITESPACE
     text_token = None
     last_newline_char = None
+    # Traverse the source code character by character with a state machine.
+    # Complete tokens are separated with whitespace characters.
+    # Yield on every complete token but do not notify the caller about
+    # comment tokens because it will ignore them anyway.
     while True:
       char = source.read(1)
       if not char: # Reached end of the source.
