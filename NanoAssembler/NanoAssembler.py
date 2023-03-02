@@ -10,128 +10,127 @@ from collections import deque
 
 # Token types
 class Token(object):
-  # Consider this abstract method.
-  def describe(self) -> str:
+  def __init__(self, raw: str, line: int, column: int) -> None:
+    self.raw = raw # Public attribute
+    # Index of the line and text column in which the token was met.
+    self.line = line
+    self.column = column
+
+  def type_name(self) -> str: # Consider this public abstract method.
     raise NotImplementedError("Please implement this method")
 
 class Newline(Token):
-  def try_parse(token: str) -> Newline:
-    if token == "\n":
-      return Newline()
+  def __init__(self, token: Token) -> None:
+    super().__init__(token.raw, token.line, token.column)
+
+  def try_parse(token: Token) -> Newline:
+    if token.raw == "\n":
+      return Newline(token)
     return None
 
-  def describe(self) -> str:
+  def type_name(self) -> str:
     return "newline"
 
 class LabelDeclaration(Token):
-  def __init__(self, raw: str) -> None:
-    self.__raw = raw
-    # For the index of the line in which the declaration was met.
-    self.__line_index = None
+  def __init__(self, token: Token) -> None:
+    super().__init__(token.raw, token.line, token.column)
 
-  def try_parse(token: str) -> LabelDeclaration:
-    if token.endswith(":"):
+  def try_parse(token: Token) -> LabelDeclaration:
+    if token.raw.endswith(":"):
       return LabelDeclaration(token) # Do not skip ":".
     return None
 
-  def describe(self) -> str:
-    return "label description token '{}'".format(self.__raw)
-
-  def raw(self) -> str:
-    return self.__raw
-
   def name(self) -> str:
-    return self.__raw[:-1] # Skip ":".
+    return self.raw[:-1] # Skip ":".
 
-  def get_line_index(self) -> None: # Getter
-    return self.__line_index
-
-  def set_line_index(self, value: int) -> None: # Setter
-    self.__line_index = value
+  def type_name(self) -> str:
+    return "label declaration"
 
 class Instruction(Token):
-  def __init__(self, raw: str) -> None:
-    self.__raw = raw
+  def __init__(self, token: Token) -> None:
+    super().__init__(token.raw, token.line, token.column)
 
-  def raw(self) -> str:
-    return self.__raw
+  def bit_count(self) -> int:
+    return 3
 
-  def code(self) -> int:
-    return self.CODES[self.__raw]
+  def numeric_value(self) -> int:
+    return self.CODES[self.raw]
 
 class RegisterInstruction(Instruction):
   CODES = { "mv":0, "add":2, "sub":3, "ld":4, "st":5, "mvnz":6 }
 
-  def __init__(self, raw: str) -> None:
-    super().__init__(raw)
+  def __init__(self, token: Token) -> None:
+    super().__init__(token)
 
-  def try_parse(token: str) -> RegisterInstruction:
+  def try_parse(token: Token) -> RegisterInstruction:
     codes = RegisterInstruction.CODES
-    if token in codes:
+    if token.raw in codes:
       return RegisterInstruction(token)
     return None
 
-  def describe(self) -> str:
-    return "register instruction token '{}'".format(self.__raw)
+  def type_name(self) -> str:
+    return "register instruction"
 
 class ImmediateInstruction(Instruction):
   # 'mvi' is 'immediate' instruction whose second operand must
   # be specified immediately after the instruction word.
   CODES = { "mvi":1 }
 
-  def __init__(self, raw: str) -> None:
-    super().__init__(raw)
+  def __init__(self, token: Token) -> None:
+    super().__init__(token)
 
-  def try_parse(token: str) -> ImmediateInstruction:
+  def try_parse(token: Token) -> ImmediateInstruction:
     codes = ImmediateInstruction.CODES
-    if token in codes:
+    if token.raw in codes:
       return ImmediateInstruction(token)
     return None
 
-  def describe(self) -> str:
-    return "immediate instruction token '{}'".format(self.__raw)
+  def type_name(self) -> str:
+    return "immediate instruction"
 
 class Register(Instruction):
   CODES = { "R0":0, "R1":1, "R2":2, "R3":3, "R4":4, "R5":5, "R6":6, "PC":7 }
 
-  def __init__(self, raw: str) -> None:
-    super().__init__(raw)
+  def __init__(self, token: Token) -> None:
+    super().__init__(token)
 
-  def try_parse(token: str) -> Register:
+  def try_parse(token: Token) -> Register:
     codes = Register.CODES
-    if token in codes:
+    if token.raw in codes:
       return Register(token)
     return None
 
-  def describe(self) -> str:
-    return "register token '{}'".format(self.__raw)
+  def type_name(self) -> str:
+    return "register"
 
-class Literal(Token): pass
+class Literal(Token):
+  def __init__(self, token: Token) -> None:
+    super().__init__(token.raw, token.line, token.column)
+
+  def bit_count(self) -> int:
+    return 9
 
 class LabelReference(Literal):
-  def __init__(self, raw: str) -> None:
-    self.__raw = raw
+  def __init__(self, token: Token) -> None:
+    super().__init__(token)
 
-  def try_parse(token: str) -> LabelReference:
-    if token.startswith(":"):
+  def try_parse(token: Token) -> LabelReference:
+    if token.raw.startswith(":"):
       return LabelReference(token) # Do not skip ":".
     return None
 
-  def describe(self) -> str:
-    return "label reference literal token '{}'".format(self.__raw)
-
-  def raw(self) -> str:
-    return self.__raw
-
   def name(self) -> str:
-    return self.__raw[1:] # Skip ":".
+    return self.raw[1:] # Skip ":".
+  
+  def type_name(self) -> str:
+    return "label reference"
 
 class NumericLiteral(Literal):
-  def __init__(self, raw: str) -> None:
-    self.__raw = raw
+  def __init__(self, token: Token) -> None:
+    super().__init__(token)
 
-  def try_parse(token: str) -> NumericLiteral:
-    if NumericLiteral.__value(token) is not None:
+  def try_parse(token: Token) -> NumericLiteral:
+    if NumericLiteral.__value(token.raw) is not None:
       return NumericLiteral(token)
     return None
 
@@ -187,14 +186,11 @@ class NumericLiteral(Literal):
         return None
     return number
 
-  def describe(self) -> str:
-    return "numeric literal token '{}'".format(self.__raw)
+  def numeric_value(self) -> int:
+    return NumericLiteral.__value(self.raw)
 
-  def raw(self) -> str:
-    return self.__raw
-
-  def value(self) -> int:
-    return NumericLiteral.__value(self.__raw)
+  def type_name(self) -> str:
+    return "numeric literal"
 # Token types
 
 # Parser workers
@@ -209,20 +205,20 @@ class LabelLister(object):
     # Start counting translated memory words from 0.
     self.__memory_word_index = 0
 
-  def add_pending_label(self, label: LabelDeclaration, line_index: int) -> None:
-    label.set_line_index(line_index)
+  def add_pending_label(self, label: LabelDeclaration) -> None:
     self.__pending_labels.append(label)
 
   def flush_pending_labels(self) -> None:
     # Set pending labels to the current word address (index)
     # and clear pending label queue.
     for label in self.__pending_labels:
-      label_name = label.name()
-      if label_name in self.__labels:
-        self.__warnings.append("Warning: Label '{}' redeclared in line {}."
-          .format(label_name, label.get_line_index()))
+      name = label.name()
+      if name in self.__labels:
+        self.__warnings.append(
+          "Warning: Label '{}' redeclared in line {}, column {}."
+          .format(name, label.line, label.column))
       # Redeclaration produces a warning and overwrites the label's position.
-      self.__labels[label_name] = self.__memory_word_index
+      self.__labels[name] = self.__memory_word_index
     self.__pending_labels.clear()
     self.__memory_word_index += 1
 
@@ -237,7 +233,7 @@ class NullLabelLister(LabelLister):
   def __init__(self) -> None:
     pass
 
-  def add_pending_label(self, label: LabelDeclaration, line_index: int) -> None:
+  def add_pending_label(self, label: LabelDeclaration) -> None:
     pass
 
   def flush_pending_labels(self) -> None:
@@ -248,60 +244,74 @@ class Writer(object):
     labels: dict[str, int]) -> None:
     self.__target = target
     self.__labels = labels
+    self.__errors = deque[str]()
+    # Count characters written in the current line
+    # and break the line every 9 characters.
+    self.__char_counter = 0
 
-  def print(self, number: int, bit_count: int, end: str = "") -> None:
+  def print(self, token: Token) -> None:
+    self.__write_number(token.numeric_value(), token.bit_count())
+
+  def print_dereferenced_label(self, label: LabelReference) -> None:
+    name = label.name()
+    if name in self.__labels:
+      number = self.__labels[name]
+    else:
+      self.__errors.append(
+        "Error: Undeclared label '{}' referenced in line {}, column {}."
+        .format(name, label.line, label.column))
+      # Print 0 and pretend that no error occured.
+      number = 0
+    self.__write_number(number, label.bit_count())
+
+  def __write_number(self, number: int , bit_count: int) -> None:
     bit_string = ""
     for b in range(0, bit_count):
       bit_string = str(number % 2) + bit_string
       number //= 2
-    self.__target.write(bit_string + end)
 
-  def print_dereferenced_label(self, name: str, bit_count: int,
-    end: str = "") -> bool:
-    # Return 'False' if label does not exist.
-    if name not in self.__labels:
-      return False
-    self.print(self.__labels[name], bit_count, end)
-    return True
+    self.__target.write(bit_string)
+    self.__char_counter += bit_count
+    if self.__char_counter == 9:
+      self.__target.write("\n")
+      self.__char_counter = 0
+
+  def get_errors(self) -> deque[str]:
+    return self.__errors
 
 class NullWriter(Writer):
   def __init__(self) -> None:
     pass
 
-  def print(self, number: int, bit_count: int, end: str = "") -> None:
+  def print(self, token: Token) -> None:
     pass
 
-  def print_dereferenced_label(self, name: str, bit_count: int,
-    end: str = "") -> bool:
-    return True # Pretend success.
+  def print_dereferenced_label(self, token: LabelReference) -> None:
+    pass
 # Parser workers
 
 class Parser(object):
   # Parser states
   class State(object):
     # Single '_' means protected method access modifier.
-    def unexpected_token(self, token: Token, line_index: str) -> str:
-      return "Error: Unexpected {} in line {}."\
-        .format(token.describe(), line_index)
-
-    def undeclared_label(self, label: LabelReference, line_index: str) -> str:
-      return "Error: Reference to undeclared label '{}' in line {}."\
-        .format(label.name(), line_index)
+    def _error_unexpected(self, token: Token) -> str:
+      return ("Error: Unexpected {} '{}' in line {}, column {}."
+        .format(token.type_name(), token.raw, token.line, token.column))
 
   class Initial(State):
     def parse_token(self, ctx: Parser, token: Token) -> str:
       # INITIAL
       match token: # Operation dependent on token type.
         case Newline(): # Do not change state.
-          ctx.line_index += 1
+          pass
         case LabelDeclaration(): # Do not change state.
-          ctx.label_lister.add_pending_label(token, ctx.line_index)
+          ctx.label_lister.add_pending_label(token)
         case RegisterInstruction():
           ctx.state = Parser.RegisterInstruction()
-          ctx.writer.print(token.code(), 3)
+          ctx.writer.print(token)
         case ImmediateInstruction():
           ctx.state = Parser.ImmediateInstruction()
-          ctx.writer.print(token.code(), 3)
+          ctx.writer.print(token)
         case Literal():
           ctx.state = Parser.Literal()
           ctx.label_lister.flush_pending_labels()
@@ -311,12 +321,11 @@ class Parser(object):
           # reference to the sole instance of 'LabelReference'
           # metaclass.
           if isinstance(token, LabelReference):
-            if not ctx.writer.print_dereferenced_label(token.name(), 9, "\n"):
-              return self.undeclared_label(token, ctx.line_index)
+            ctx.writer.print_dereferenced_label(token)
           else: # isinstance(token, NumericLiteral):
-            ctx.writer.print(token.value(), 9, "\n")
+            ctx.writer.print(token)
         case _:
-          return self.unexpected_token(token)
+          return self._error_unexpected(token)
 
   class RegisterInstruction(State):
     def __init__(self) -> None:
@@ -336,22 +345,21 @@ class Parser(object):
     def __parse_1st_register(self, ctx: Parser, token: Token) -> str:
       # After register instruction name
       if not isinstance(token, Register):
-        return self.unexpected_token(token)
-      ctx.writer.print(token.code(), 3)
+        return self._error_unexpected(token)
+      ctx.writer.print(token)
 
     def __parse_2nd_register(self, ctx: Parser, token: Token) -> str:
       # After 1 operand (register)
       if not isinstance(token, Register):
-        return self.unexpected_token(token)
+        return self._error_unexpected(token)
       ctx.label_lister.flush_pending_labels()
-      ctx.writer.print(token.code(), 3, "\n")
+      ctx.writer.print(token)
 
     def __parse_newline(self, ctx: Parser, token: Token) -> str:
       # After 2 operands (registers)
       if not isinstance(token, Newline):
-        return self.unexpected_token(token)
+        return self._error_unexpected(token)
       ctx.state = Parser.Initial()
-      ctx.line_index += 1
 
   class ImmediateInstruction(State):
     def __init__(self) -> None:
@@ -370,44 +378,42 @@ class Parser(object):
     def __parse_register(self, ctx: Parser, token: Token) -> str:
       # After immediate instruction name
       if not isinstance(token, Register):
-        return self.unexpected_token(token)
+        return self._error_unexpected(token)
       ctx.label_lister.flush_pending_labels()
-      ctx.writer.print(token.code(), 3)
-      ctx.writer.print(0, 3, "\n")
+      ctx.writer.print(token)
+      # The processor ignores the second register code so print the same twice.
+      ctx.writer.print(token)
       self.__substate += 1
 
     def __parse_newline(self, ctx: Parser, token: Token) -> str:
       # After 1 operand (register)
       if not isinstance(token, Newline):
-        return self.unexpected_token(token)
-      ctx.line_index += 1
+        return self._error_unexpected(token)
       self.__substate += 1
 
     def __parse_literal(self, ctx: Parser, token: Token) -> str:
       # After 1 operand and newline
       match token:
         case Newline(): # Skip multiple newlines. Do not change state.
-          ctx.line_index += 1
+          pass
         case LabelDeclaration(): # Do not change state.
-          ctx.label_lister.add_pending_label(token, ctx.line_index)
+          ctx.label_lister.add_pending_label(token)
         case Literal():
           ctx.state = Parser.Literal()
           ctx.label_lister.flush_pending_labels()
           if isinstance(token, LabelReference):
-            if not ctx.writer.print_dereferenced_label(token.name(), 9, "\n"):
-              return self.undeclared_label(token, ctx.line_index)
+            ctx.writer.print_dereferenced_label(token)
           else:
-            ctx.writer.print(token.value(), 9, "\n")
+            ctx.writer.print(token)
         case _:
-          return self.unexpected_token(token)
+          return self._error_unexpected(token)
 
   # Data words, not to be executed by the processor.
   class Literal(State):
     def parse_token(self, ctx: Parser, token: Token) -> str:
       if not isinstance(token, Newline):
-        return self.unexpected_token(token)
+        return self._error_unexpected(token)
       ctx.state = Parser.Initial()
-      ctx.line_index += 1
   # Parser states
 
   def parse(self, source: TextIOWrapper, label_lister: LabelLister,
@@ -416,24 +422,22 @@ class Parser(object):
     self.writer = writer
     self.state = Parser.Initial()
 
-    # Start counting source code lines from 1.
-    self.line_index = 1
-
     source.seek(0, 0)
     tokenizer = self.__tokenize(source)
     # Traverse the source code token by token with a state machine.
     for unclassified_token in tokenizer:
       token = self.__classify_token(unclassified_token)
       if token is None: # Unrecognized token type.
-        return "Error: Unrecognized token '{}' in line {}."\
-          .format(unclassified_token, self.line_index)
+        ut = unclassified_token
+        return ("Error: Unrecognized token '{}' in line {}, column {}."
+          .format(ut.raw, ut.line, ut.column))
 
       error = self.state.parse_token(self, token)
       if error is not None:
         return error
     return None
 
-  def __classify_token(self, token: str) -> Token:
+  def __classify_token(self, token: Token) -> Token:
     types = [
       Newline,
       LabelDeclaration,
@@ -450,7 +454,8 @@ class Parser(object):
 
   # This function is a coroutine (https://en.wikipedia.org/wiki/Coroutine)
   # because it is paused using 'yield' and resumed by being called again.
-  def __tokenize(self, source: TextIOWrapper) -> str:
+  # Returns an unclassified token.
+  def __tokenize(self, source: TextIOWrapper) -> Token:
     states = SimpleNamespace()
     states.WHITESPACE = 0
     states.NEWLINE = 1
@@ -460,6 +465,30 @@ class Parser(object):
     state = states.WHITESPACE
     text_token = None
     last_newline_char = None
+
+    line, column, token_start = 1, 0, 0
+
+    def start_text_token(first_char: str) -> None:
+      nonlocal state, text_token, token_start
+      state = states.TEXT
+      text_token = first_char # Start a new text token.
+      token_start = column
+
+    def start_newline_token() -> None:
+      nonlocal state, token_start
+      state = states.NEWLINE
+      token_start = column
+
+    def text() -> Token:
+      return Token(text_token, line, token_start)
+
+    def newline() -> Token:
+      nonlocal line, column
+      ret = Token("\n", line, token_start)
+      line += 1
+      column = 0
+      return ret
+
     # Traverse the source code character by character with a state machine.
     # Complete tokens are separated with whitespace characters.
     # Yield on every complete token but do not notify the caller about
@@ -475,47 +504,49 @@ class Parser(object):
               # Firstly 'yield', because the user of 'tokenize' generator
               # (e.g. 'for unclassified_token in tokenizer:')
               # breaks on returned value, only processes yielded values.
-              yield "\n"
+              yield newline()
             # else last_newline_char == "\n" -
             # A newline token for "\n" has already been returned.
             # 'None' returned by the generator breaks a 'for in' loop.
             return None
           case states.TEXT:
-            yield text_token
+            yield text()
         return None
 
-      elif char in "\r\n": # Newline (separator) token character met.
+      column += 1
+      if char in "\r\n": # Newline (separator) token character met.
         match state:
           case states.WHITESPACE:
-            state = states.NEWLINE
+            start_newline_token()
             if char == "\n":
-              yield "\n"
+              yield newline()
             # else char == "\r" - Do nothing and wait for potential "\n".
             last_newline_char = char
           case states.NEWLINE:
+            start_newline_token()
             if last_newline_char == "\n":
               if char == "\n":
-                yield "\n" # "\n\n" met.
+                yield newline() # "\n\n" met.
               # else char == "\r" - Do nothing and wait for potential "\n".
             else: # last_newline_char == "\r"
               # "\r\n" or "\r\r" met.
               # Return a newline token ("\n") only once for the entire "\r\n"
               # or for just the first '\r' from "\r\r".
-              yield "\n"
+              yield newline()
             last_newline_char = char
           case states.COMMENT:
-            state = states.NEWLINE
+            start_newline_token()
             if char == "\n":
-              yield "\n"
+              yield newline()
             last_newline_char = char
           case states.TEXT:
             # With 'yield' we can pause and then resume this function
             # coming back to this line and context (variables' values)
             # the next time we call this function.
-            yield text_token # End text token.
-            state = states.NEWLINE
+            yield text() # End text token.
+            start_newline_token()
             if char == "\n":
-              yield "\n"
+              yield newline()
             # else: # char == "\r" - Do nothing and wait for potential "\n".
             last_newline_char = char
 
@@ -527,12 +558,12 @@ class Parser(object):
             pass
           case states.NEWLINE:
             if last_newline_char == "\r":
-              yield "\n"
+              yield newline()
             state = states.WHITESPACE
           case states.COMMENT:
             pass # A comment ends only at newline character.
           case states.TEXT:
-            yield text_token
+            yield text()
             state = states.WHITESPACE
 
       elif char == ";": # Comment token beginning met.
@@ -541,24 +572,22 @@ class Parser(object):
             state = states.COMMENT
           case states.NEWLINE:
             if last_newline_char == "\r":
-              yield "\n"
+              yield newline()
             state = states.COMMENT
           case states.COMMENT:
             pass
           case states.TEXT:
-            yield text_token
+            yield text()
             state = states.COMMENT
 
       else: # Text token character met.
         match state:
           case states.WHITESPACE:
-            state = states.TEXT
-            text_token = char # Start a new text token.
+            start_text_token(char)
           case states.NEWLINE:
             if last_newline_char == "\r":
-              yield "\n"
-            state = states.TEXT
-            text_token = char
+              yield newline()
+            start_text_token(char)
           case states.COMMENT:
             pass
           case states.TEXT:
@@ -579,10 +608,11 @@ def assemble(source: TextIOWrapper,
 
   else: # Code is valid.
     # Translate instructions and literals (numeric values) to binary words.
-    error = parser.parse(source, NullLabelLister(),
-      Writer(target, real_lister.get_labels()))
-    # Check if there were no undeclared labels referenced.
-    if error is not None:
+    writer = Writer(target, real_lister.get_labels())
+    # Code has already been validated so do not check for a syntax error.
+    parser.parse(source, NullLabelLister(), writer)
+    # But check if there are no undeclared labels referenced.
+    for error in writer.get_errors():
       print(error)
 
 def parse_commandline_arguments():
