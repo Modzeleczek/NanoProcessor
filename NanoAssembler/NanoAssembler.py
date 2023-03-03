@@ -194,7 +194,14 @@ class NumericLiteral(Literal):
 # Token types
 
 # Parser workers
-class LabelLister(object):
+# NullObject design pattern
+class Worker(object):
+  def add_pending_label(self, label: LabelDeclaration) -> None: pass
+  def flush_pending_labels(self) -> None: pass
+  def print(self, token: Token) -> None: pass
+  def print_dereferenced_label(self, label: LabelReference) -> None: pass
+
+class LabelLister(Worker):
   def __init__(self) -> None:
     # A double-ended queue for storing names of labels
     # that need to have their memory positions calculated before
@@ -228,23 +235,27 @@ class LabelLister(object):
   def get_warnings(self) -> deque[str]:
     return self.__warnings
 
-# NullObject design pattern
-class NullLabelLister(LabelLister):
-  def __init__(self) -> None:
-    pass
+class ReferenceValidator(Worker):
+  def __init__(self, labels: dict[str, int]) -> None:
+    self.__labels = labels
+    self.__errors = deque[str]()
 
-  def add_pending_label(self, label: LabelDeclaration) -> None:
-    pass
+  # Do not print but check if referenced label is declared.
+  def print_dereferenced_label(self, label: LabelReference) -> None:
+    name = label.name()
+    if name not in self.__labels:
+      self.__errors.append(
+        "Error: Undeclared label '{}' referenced in line {}, column {}."
+        .format(name, label.line, label.column))
 
-  def flush_pending_labels(self) -> None:
-    pass
+  def get_errors(self) -> deque[str]:
+    return self.__errors
 
-class Writer(object):
+class Writer(Worker):
   def __init__(self, target: TextIO | TextIOWrapper,
     labels: dict[str, int]) -> None:
     self.__target = target
     self.__labels = labels
-    self.__errors = deque[str]()
     # Count characters written in the current line
     # and break the line every 9 characters.
     self.__char_counter = 0
@@ -253,18 +264,9 @@ class Writer(object):
     self.__write_number(token.numeric_value(), token.bit_count())
 
   def print_dereferenced_label(self, label: LabelReference) -> None:
-    name = label.name()
-    if name in self.__labels:
-      number = self.__labels[name]
-    else:
-      self.__errors.append(
-        "Error: Undeclared label '{}' referenced in line {}, column {}."
-        .format(name, label.line, label.column))
-      # Print 0 and pretend that no error occured.
-      number = 0
-    self.__write_number(number, label.bit_count())
+    self.__write_number(self.__labels[label.name()], label.bit_count())
 
-  def __write_number(self, number: int , bit_count: int) -> None:
+  def __write_number(self, number: int, bit_count: int) -> None:
     bit_string = ""
     for b in range(0, bit_count):
       bit_string = str(number % 2) + bit_string
@@ -275,19 +277,6 @@ class Writer(object):
     if self.__char_counter == 9:
       self.__target.write("\n")
       self.__char_counter = 0
-
-  def get_errors(self) -> deque[str]:
-    return self.__errors
-
-class NullWriter(Writer):
-  def __init__(self) -> None:
-    pass
-
-  def print(self, token: Token) -> None:
-    pass
-
-  def print_dereferenced_label(self, token: LabelReference) -> None:
-    pass
 # Parser workers
 
 class Parser(object):
@@ -305,25 +294,25 @@ class Parser(object):
         case Newline(): # Do not change state.
           pass
         case LabelDeclaration(): # Do not change state.
-          ctx.label_lister.add_pending_label(token)
+          ctx.worker.add_pending_label(token)
         case RegisterInstruction():
           ctx.state = Parser.RegisterInstruction()
-          ctx.writer.print(token)
+          ctx.worker.print(token)
         case ImmediateInstruction():
           ctx.state = Parser.ImmediateInstruction()
-          ctx.writer.print(token)
+          ctx.worker.print(token)
         case Literal():
           ctx.state = Parser.Literal()
-          ctx.label_lister.flush_pending_labels()
+          ctx.worker.flush_pending_labels()
           # 'Is' compares only references.
           # 'LabelReference' is a metaclass and a singleton.
           # 'LabelReference' identifier used in code works as a
           # reference to the sole instance of 'LabelReference'
           # metaclass.
           if isinstance(token, LabelReference):
-            ctx.writer.print_dereferenced_label(token)
+            ctx.worker.print_dereferenced_label(token)
           else: # isinstance(token, NumericLiteral):
-            ctx.writer.print(token)
+            ctx.worker.print(token)
         case _:
           return self._error_unexpected(token)
 
@@ -346,14 +335,14 @@ class Parser(object):
       # After register instruction name
       if not isinstance(token, Register):
         return self._error_unexpected(token)
-      ctx.writer.print(token)
+      ctx.worker.print(token)
 
     def __parse_2nd_register(self, ctx: Parser, token: Token) -> str:
       # After 1 operand (register)
       if not isinstance(token, Register):
         return self._error_unexpected(token)
-      ctx.label_lister.flush_pending_labels()
-      ctx.writer.print(token)
+      ctx.worker.flush_pending_labels()
+      ctx.worker.print(token)
 
     def __parse_newline(self, ctx: Parser, token: Token) -> str:
       # After 2 operands (registers)
@@ -379,10 +368,10 @@ class Parser(object):
       # After immediate instruction name
       if not isinstance(token, Register):
         return self._error_unexpected(token)
-      ctx.label_lister.flush_pending_labels()
-      ctx.writer.print(token)
+      ctx.worker.flush_pending_labels()
+      ctx.worker.print(token)
       # The processor ignores the second register code so print the same twice.
-      ctx.writer.print(token)
+      ctx.worker.print(token)
       self.__substate += 1
 
     def __parse_newline(self, ctx: Parser, token: Token) -> str:
@@ -397,14 +386,14 @@ class Parser(object):
         case Newline(): # Skip multiple newlines. Do not change state.
           pass
         case LabelDeclaration(): # Do not change state.
-          ctx.label_lister.add_pending_label(token)
+          ctx.worker.add_pending_label(token)
         case Literal():
           ctx.state = Parser.Literal()
-          ctx.label_lister.flush_pending_labels()
+          ctx.worker.flush_pending_labels()
           if isinstance(token, LabelReference):
-            ctx.writer.print_dereferenced_label(token)
+            ctx.worker.print_dereferenced_label(token)
           else:
-            ctx.writer.print(token)
+            ctx.worker.print(token)
         case _:
           return self._error_unexpected(token)
 
@@ -416,10 +405,8 @@ class Parser(object):
       ctx.state = Parser.Initial()
   # Parser states
 
-  def parse(self, source: TextIOWrapper, label_lister: LabelLister,
-    writer: Writer) -> str:
-    self.label_lister = label_lister
-    self.writer = writer
+  def parse(self, source: TextIOWrapper, worker: Worker) -> str:
+    self.worker = worker
     self.state = Parser.Initial()
 
     source.seek(0, 0)
@@ -595,25 +582,32 @@ class Parser(object):
 
 def assemble(source: TextIOWrapper,
   target: TextIO | TextIOWrapper) -> None:
-  # Validate the source assembly code.
+  # Validate the source assembly code syntax.
   # Locate label declarations.
   parser = Parser()
-  real_lister = LabelLister()
-  error = parser.parse(source, real_lister, NullWriter())
-  for warning in real_lister.get_warnings():
+  lister = LabelLister()
+  error = parser.parse(source, lister)
+  if error is not None: # Code has at least one syntax error.
+    print(error)
+    return
+  # Code has no syntax errors.
+  for warning in lister.get_warnings():
     print(warning)
 
-  if error is not None: # Code has an error.
-    print(error)
-
-  else: # Code is valid.
-    # Translate instructions and literals (numeric values) to binary words.
-    writer = Writer(target, real_lister.get_labels())
-    # Code has already been validated so do not check for a syntax error.
-    parser.parse(source, NullLabelLister(), writer)
-    # But check if there are no undeclared labels referenced.
-    for error in writer.get_errors():
+  # Check if no undeclared labels are referenced.
+  labels = lister.get_labels()
+  validator = ReferenceValidator(labels)
+  # Code has no syntax errors so do not check again.
+  parser.parse(source, validator)
+  errors = validator.get_errors()
+  if len(errors) > 0:
+    for error in errors:
       print(error)
+    return
+
+  # No undeclared labels are referenced.
+  # Translate instructions and literals (numeric values) to binary words.
+  parser.parse(source, Writer(target, labels))
 
 def parse_commandline_arguments():
   # https://stackoverflow.com/a/30493366
