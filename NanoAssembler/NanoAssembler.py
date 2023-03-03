@@ -103,14 +103,14 @@ class Register(Instruction):
   def type_name(self) -> str:
     return "register"
 
-class Literal(Token):
+class NumericValue(Token):
   def __init__(self, token: Token) -> None:
     super().__init__(token.raw, token.line, token.column)
 
   def bit_count(self) -> int:
     return 9
 
-class LabelReference(Literal):
+class LabelReference(NumericValue):
   def __init__(self, token: Token) -> None:
     super().__init__(token)
 
@@ -121,17 +121,20 @@ class LabelReference(Literal):
 
   def name(self) -> str:
     return self.raw[1:] # Skip ":".
-  
+
   def type_name(self) -> str:
     return "label reference"
 
-class NumericLiteral(Literal):
+  def bit_count(self) -> int:
+    return 9
+
+class Literal(NumericValue):
   def __init__(self, token: Token) -> None:
     super().__init__(token)
 
-  def try_parse(token: Token) -> NumericLiteral:
-    if NumericLiteral.__value(token.raw) is not None:
-      return NumericLiteral(token)
+  def try_parse(token: Token) -> Literal:
+    if Literal.__value(token.raw) is not None:
+      return Literal(token)
     return None
 
   def __value(raw: str) -> int:
@@ -150,7 +153,7 @@ class NumericLiteral(Literal):
     if not (length > 0): # Number has no digits.
       return None
 
-    return NumericLiteral.str_to_int(digits, base)
+    return Literal.str_to_int(digits, base)
 
   def str_to_int(digits: str, base: int) -> int:
     # Assume that base <= 16
@@ -187,7 +190,7 @@ class NumericLiteral(Literal):
     return number
 
   def numeric_value(self) -> int:
-    return NumericLiteral.__value(self.raw)
+    return Literal.__value(self.raw)
 
   def type_name(self) -> str:
     return "numeric literal"
@@ -301,8 +304,8 @@ class Parser(object):
         case ImmediateInstruction():
           ctx.state = Parser.ImmediateInstruction()
           ctx.worker.print(token)
-        case Literal():
-          ctx.state = Parser.Literal()
+        case NumericValue():
+          ctx.state = Parser.NumericValue()
           ctx.worker.flush_pending_labels()
           # 'Is' compares only references.
           # 'LabelReference' is a metaclass and a singleton.
@@ -311,7 +314,7 @@ class Parser(object):
           # metaclass.
           if isinstance(token, LabelReference):
             ctx.worker.print_dereferenced_label(token)
-          else: # isinstance(token, NumericLiteral):
+          else: # isinstance(token, Literal):
             ctx.worker.print(token)
         case _:
           return self._error_unexpected(token)
@@ -358,7 +361,7 @@ class Parser(object):
       operations = [
         self.__parse_register,
         self.__parse_newline,
-        self.__parse_literal
+        self.__parse_numeric_value
       ]
       error = operations[self.__substate](ctx, token)
       if error is not None:
@@ -380,15 +383,15 @@ class Parser(object):
         return self._error_unexpected(token)
       self.__substate += 1
 
-    def __parse_literal(self, ctx: Parser, token: Token) -> str:
+    def __parse_numeric_value(self, ctx: Parser, token: Token) -> str:
       # After 1 operand and newline
       match token:
         case Newline(): # Skip multiple newlines. Do not change state.
           pass
         case LabelDeclaration(): # Do not change state.
           ctx.worker.add_pending_label(token)
-        case Literal():
-          ctx.state = Parser.Literal()
+        case NumericValue():
+          ctx.state = Parser.NumericValue()
           ctx.worker.flush_pending_labels()
           if isinstance(token, LabelReference):
             ctx.worker.print_dereferenced_label(token)
@@ -398,7 +401,7 @@ class Parser(object):
           return self._error_unexpected(token)
 
   # Data words, not to be executed by the processor.
-  class Literal(State):
+  class NumericValue(State):
     def parse_token(self, ctx: Parser, token: Token) -> str:
       if not isinstance(token, Newline):
         return self._error_unexpected(token)
@@ -432,7 +435,7 @@ class Parser(object):
       ImmediateInstruction,
       Register,
       LabelReference,
-      NumericLiteral
+      Literal
     ]
     for t in types:
       # Equivalent to C#: if ((Newline.TryParse(token, out ret)) != false)
@@ -606,7 +609,7 @@ def assemble(source: TextIOWrapper,
     return
 
   # No undeclared labels are referenced.
-  # Translate instructions and literals (numeric values) to binary words.
+  # Translate instructions and numeric values to binary words.
   parser.parse(source, Writer(target, labels))
 
 def parse_commandline_arguments():
