@@ -373,8 +373,10 @@ class Parser(object):
         return self._error_unexpected(token)
       ctx.worker.flush_pending_labels()
       ctx.worker.print(token)
-      # The processor ignores the second register code so print the same twice.
-      ctx.worker.print(token)
+      # The processor ignores the second register code so print R0 there.
+      first_register_code = next(iter(Register.CODES.keys()))
+      ctx.worker.print(Register(
+        Token(first_register_code, token.line, token.column)))
       self.__substate += 1
 
     def __parse_newline(self, ctx: Parser, token: Token) -> str:
