@@ -617,10 +617,14 @@ def parse_commandline_arguments():
   # https://docs.python.org/3/library/argparse.html
   parser = argparse.ArgumentParser(prog="NanoAssembler",
     description="Translate a file written in NanoProcessor assembly language "
-    "to NanoProcessor machine (binary) language.")
+    "to NanoProcessor machine (binary) language.",
+    add_help=False) # Disable the automatic addition of '-h' argument.
 
   parser.add_argument("source", type=str, help="File in NanoProcessor "
     "assembly language.")
+
+  parser.add_argument('-h', action='help', default=argparse.SUPPRESS,
+    help='Show this help message and exit.')
 
   parser.add_argument("-e", type=str, dest="source_encoding",
     help="Specify encoding of the source file. See 'codecs' module "
