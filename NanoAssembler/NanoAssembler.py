@@ -868,12 +868,14 @@ def parse_commandline_arguments():
     "(https://docs.python.org/3/library/codecs.html#standard-encodings). "
     "If source encoding is not specified, NanoAssembler attempts to determine "
     "it using 'chardet' library as long as the user has it installed. "
-    "Do not use automatic encoding detection for big files that cannot entirely "
-    "fit in program's memory. Such a program would not fit in NanoProcessor's "
-    "memory anyway.")
+    "Do not use automatic encoding detection for big files that cannot "
+    "entirely fit in Python script's memory. Such a program probably "
+    "would not fit in NanoProcessor's memory anyway.")
 
   parser.add_argument("-o", type=str, dest="target",
-    help="Overwrite initial memory content in specified SRAM module Verilog file.")
+    help="Overwrite initial memory content in specified SRAM module "
+    "Verilog file (SRAM.v). If this argument is not used, "
+    "the binary code is written to stdout.")
 
   # An optional positional argument can be used instead of -o.
   # parser.add_argument("target", type=str, nargs="?",
@@ -914,16 +916,17 @@ def main():
       try:
         import chardet
       except:
-        print("'Chardet' library is unavailable. Install it or manually"
+        print("'Chardet' library is unavailable. Install it or manually "
           "specify source encoding.")
         return -3
 
       detected_encoding = chardet.detect(binary_data)["encoding"]
       if not encoding_supported(detected_encoding):
-        print("Detected encoding '{}' is not supported."
+        print("Detected source encoding '{}' is not supported."
           .format(detected_encoding))
         return -4
       # Detected source encoding is supported by 'codecs'.
+      print("Detected source encoding '{}'.".format(detected_encoding))
       source_encoding = detected_encoding
 
   with open(args.source, "r", encoding=source_encoding) as source:
