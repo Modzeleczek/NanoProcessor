@@ -201,8 +201,8 @@ class Literal(NumericValue):
 class Worker(object):
   def add_pending_label(self, label: LabelDeclaration) -> None: pass
   def flush_pending_labels(self) -> None: pass
-  def print(self, token: Token) -> None: pass
-  def print_dereferenced_label(self, label: LabelReference) -> None: pass
+  def write(self, token: Token) -> None: pass
+  def write_dereferenced_label(self, label: LabelReference) -> None: pass
 
 class LabelLister(Worker):
   def __init__(self) -> None:
@@ -238,48 +238,50 @@ class LabelLister(Worker):
   def get_warnings(self) -> deque[str]:
     return self.__warnings
 
-class ReferenceValidator(Worker):
-  def __init__(self, labels: dict[str, int]) -> None:
+class Translator(Worker):
+  def __init__(self, labels: dict[str, int], word_size: int,
+    writer: Writer) -> None:
     self.__labels = labels
     self.__errors = deque[str]()
 
-  # Do not print but check if referenced label is declared.
-  def print_dereferenced_label(self, label: LabelReference) -> None:
+    self.__buffer = bytearray(0 for n in range(word_size))
+    self.__buffer_index = 0
+
+    self.__writer = writer
+
+  def write(self, token: Token) -> None:
+    self.__write_number(token.numeric_value(), token.bit_count())
+
+  def write_dereferenced_label(self, label: LabelReference) -> None:
     name = label.name()
     if name not in self.__labels:
       self.__errors.append(
         "Error: Undeclared label '{}' referenced in line {}, column {}."
         .format(name, label.line, label.column))
+    else:
+      self.__write_number(self.__labels[name], label.bit_count())
+
+  def __write_number(self, number: int, bit_count: int) -> None:
+    for shift in range(bit_count - 1, -1, -1): # Highest bit first.
+      self.__write_bit((number >> shift) & 1)
+
+  def __write_bit(self, bit: int) -> None:
+    buffer = self.__buffer
+    index = self.__buffer_index
+
+    bit &= 1 # Clear all bits except the lowest.
+    buffer[index] = bit
+
+    if index >= len(buffer) - 1: # Flush the word in buffer.
+      self.__writer.write_word(self.__buffer)
+      index = 0
+    else:
+      index += 1
+
+    self.__buffer_index = index
 
   def get_errors(self) -> deque[str]:
     return self.__errors
-
-class Writer(Worker):
-  def __init__(self, target: TextIO | TextIOWrapper,
-    labels: dict[str, int]) -> None:
-    self.__target = target
-    self.__labels = labels
-    # Count characters written in the current line
-    # and break the line every 9 characters.
-    self.__char_counter = 0
-
-  def print(self, token: Token) -> None:
-    self.__write_number(token.numeric_value(), token.bit_count())
-
-  def print_dereferenced_label(self, label: LabelReference) -> None:
-    self.__write_number(self.__labels[label.name()], label.bit_count())
-
-  def __write_number(self, number: int, bit_count: int) -> None:
-    bit_string = ""
-    for b in range(0, bit_count):
-      bit_string = str(number % 2) + bit_string
-      number //= 2
-
-    self.__target.write(bit_string)
-    self.__char_counter += bit_count
-    if self.__char_counter == 9:
-      self.__target.write("\n")
-      self.__char_counter = 0
 # Parser workers
 
 class Parser(object):
@@ -300,10 +302,10 @@ class Parser(object):
           ctx.worker.add_pending_label(token)
         case RegisterInstruction():
           ctx.state = Parser.RegisterInstruction()
-          ctx.worker.print(token)
+          ctx.worker.write(token)
         case ImmediateInstruction():
           ctx.state = Parser.ImmediateInstruction()
-          ctx.worker.print(token)
+          ctx.worker.write(token)
         case NumericValue():
           ctx.state = Parser.NumericValue()
           ctx.worker.flush_pending_labels()
@@ -313,9 +315,9 @@ class Parser(object):
           # reference to the sole instance of 'LabelReference'
           # metaclass.
           if isinstance(token, LabelReference):
-            ctx.worker.print_dereferenced_label(token)
+            ctx.worker.write_dereferenced_label(token)
           else: # isinstance(token, Literal):
-            ctx.worker.print(token)
+            ctx.worker.write(token)
         case _:
           return self._error_unexpected(token)
 
@@ -338,14 +340,14 @@ class Parser(object):
       # After register instruction name
       if not isinstance(token, Register):
         return self._error_unexpected(token)
-      ctx.worker.print(token)
+      ctx.worker.write(token)
 
     def __parse_2nd_register(self, ctx: Parser, token: Token) -> str:
       # After 1 operand (register)
       if not isinstance(token, Register):
         return self._error_unexpected(token)
       ctx.worker.flush_pending_labels()
-      ctx.worker.print(token)
+      ctx.worker.write(token)
 
     def __parse_newline(self, ctx: Parser, token: Token) -> str:
       # After 2 operands (registers)
@@ -372,10 +374,10 @@ class Parser(object):
       if not isinstance(token, Register):
         return self._error_unexpected(token)
       ctx.worker.flush_pending_labels()
-      ctx.worker.print(token)
+      ctx.worker.write(token)
       # The processor ignores the second register code so print R0 there.
       first_register_code = next(iter(Register.CODES.keys()))
-      ctx.worker.print(Register(
+      ctx.worker.write(Register(
         Token(first_register_code, token.line, token.column)))
       self.__substate += 1
 
@@ -396,9 +398,9 @@ class Parser(object):
           ctx.state = Parser.NumericValue()
           ctx.worker.flush_pending_labels()
           if isinstance(token, LabelReference):
-            ctx.worker.print_dereferenced_label(token)
+            ctx.worker.write_dereferenced_label(token)
           else:
-            ctx.worker.print(token)
+            ctx.worker.write(token)
         case _:
           return self._error_unexpected(token)
 
@@ -585,34 +587,266 @@ class Parser(object):
           case states.TEXT:
             text_token += char # Append the character to the current text token.
 
-def assemble(source: TextIOWrapper,
-  target: TextIO | TextIOWrapper) -> None:
-  # Validate the source assembly code syntax.
-  # Locate label declarations.
-  parser = Parser()
-  lister = LabelLister()
-  error = parser.parse(source, lister)
-  if error is not None: # Code has at least one syntax error.
-    print(error)
-    return
-  # Code has no syntax errors.
-  for warning in lister.get_warnings():
-    print(warning)
+# NullObject
+class Writer(object):
+  def write_word(self, word: bytearray) -> None:
+    pass
 
-  # Check if no undeclared labels are referenced.
-  labels = lister.get_labels()
-  validator = ReferenceValidator(labels)
-  # Code has no syntax errors so do not check again.
-  parser.parse(source, validator)
-  errors = validator.get_errors()
-  if len(errors) > 0:
-    for error in errors:
+# Does not write binary words to any target but only counts them.
+class WordCounter(Writer):
+  def __init__(self) -> None:
+    self.__written_words = 0
+
+  def write_word(self, word: bytearray) -> None:
+    # Count the words but do not write them.
+    self.__written_words += 1
+
+  def get_written_words(self) -> int:
+    return self.__written_words
+
+# Writes binary words to stdout.
+class TextIOWriter(Writer):
+  def __init__(self, target: TextIO) -> None:
+    self.__target = target
+
+  def write_word(self, word: bytearray) -> None:
+    for b in word:
+      self.__target.write(chr(ord("0") + b))
+    self.__target.write("\n")
+
+# Writes binary words to SRAM.v.
+# This class is designed to work with NanoProcessor/src/SRAM.v file present
+# in this repository.
+class SRAMvWriter(Writer):
+  def __init__(self, target: TextIOWrapper, word_size: int,
+    words_in_buffer: int, prefix: Command, suffix: Command) -> None:
+    self.__target = target
+    self.__prefix = prefix
+    self.__suffix = suffix
+
+    self.__word_size = word_size
+    # Number of word_size-bit words in one buffer.
+    self.__buffer = bytearray(0 for i in range(word_size * words_in_buffer))
+    self.__buffer_index = self.__max_index()
+    self.__written_words = 0
+
+  def __max_index(self) -> int:
+    return len(self.__buffer) - self.__word_size
+
+# Example for 9-bit WORD_SIZE.
+# |buffer[0]                                                               buffer[length-1]|
+# 0b001     0b000     0b001     0b100     ... 0b01_0000000 mvi R1  -   1         mvi R0  - |
+# |MSB                                                     |MSB                            |
+# |       |LSB                                               |LSB                          |
+# 000000001 000000000 000000001 000000100 ... 010000000    001 001 000 000000001 001 000 000
+# Divide into groups of 9 bits.
+# 000000001 000000000 000000001 000000100 ... 010000000 001001000 000000001 001000000
+# Divide into groups of 4 bits.
+# 0000 0000 1000 0000 0000 0000 0010 0000 0100 ... 0100 0000 0001 0010 0000 0000 0010 0100 0000
+# Convert groups to hexadecimal digits.
+# 0 0 8 0 0 0 2 0 4 ... 4 0 1 2 0 0 2 4 0
+  def write_word(self, word: bytearray) -> None:
+    if len(word) != self.__word_size:
+      raise ValueError("Word must be {} bits long.".format(self.__word_size))
+
+    buffer = self.__buffer
+    index = self.__buffer_index
+
+    # Write words beginning at the highest index of the buffer.
+    buffer[index : index + self.__word_size] = word
+
+    # If already at the lowest index of the buffer.
+    if index <= 0:
+      self.__flush_buffer()
+      index = self.__max_index()
+    else:
+      index -= self.__word_size
+
+    self.__written_words += 1
+    self.__buffer_index = index
+
+  def __flush_buffer(self) -> None:
+    buffer = self.__buffer
+    length = len(buffer)
+
+    # Convert 4-bit groups to hexadecimal digits.
+    self.__start_line()
+    for i in range(0, length, 4):
+      decimal = 0
+      multiplier = 8 # 2^(4-1)
+      for j in range(i, i+4, 1):
+        decimal += buffer[j] * multiplier
+        multiplier //= 2 # Integer division
+      self.__write_hex(decimal)
+    self.__end_line()
+  
+  def __start_line(self) -> None:
+    self.__target.write(self.__prefix.execute(self.__written_buffers()))
+
+  def __written_buffers(self) -> None:
+    return self.__written_words // (len(self.__buffer) // self.__word_size)
+
+  def __write_hex(self, decimal: int) -> None:
+    self.__target.write(self.__int_to_hex_char(decimal))
+
+  def __int_to_hex_char(self, number: int) -> str:
+    if number < 10:
+      return chr(ord("0") + number)
+    return chr(ord("A") + (number - 10))
+
+  def __end_line(self) -> None:
+    self.__target.write(self.__suffix.execute())
+
+  def pad(self, total_words) -> None:
+    # Pad with zeros if self.__written_words < total_words.
+    for b in range(0, total_words - self.__written_words):
+      self.write_word(bytearray(0 for n in range(0, self.__word_size)))
+
+class Assembler(object):
+  def __init__(self, source: TextIOWrapper, word_size: int) -> None:
+    self.__source = source
+    self.__word_size = word_size 
+
+  def __parse_with_worker(self, worker: Worker) -> str:
+    return Parser().parse(self.__source, worker)
+
+  def validate_syntax_and_list_labels(self) -> int:
+    lister = LabelLister()
+    # Validate the source assembly code syntax and locate label declarations.
+    error = self.__parse_with_worker(lister)
+    if error is not None: # Code has at least one syntax error.
       print(error)
-    return
+      return -1
 
-  # No undeclared labels are referenced.
-  # Translate instructions and numeric values to binary words.
-  parser.parse(source, Writer(target, labels))
+    # Code has no syntax errors. Notify about label redeclarations, if any.
+    for warning in lister.get_warnings():
+      print(warning)
+
+    self.__labels = lister.get_labels()
+    return 0
+
+  def validate_label_references(self) -> int:
+    translator = Translator(self.__labels, self.__word_size, Writer())
+    # Check if no undeclared labels are referenced.
+    self.__parse_with_worker(translator)
+    # Source code should have been checked for syntax errors
+    # in 'validate_syntax_and_list_labels' so do not check again.
+
+    # Notify about undeclared labels, if any.
+    errors = translator.get_errors()
+    if len(errors) > 0:
+      for error in errors:
+        print(error)
+      return -1
+
+    # No undeclared labels are referenced.
+    return 0
+
+  def validate_code_size(self, word_limit: int) -> int:
+    counter = WordCounter()
+    translator = Translator(self.__labels, self.__word_size, counter)
+    # Check if the assembled binary code is not too long.
+    self.__parse_with_worker(translator)
+
+    w_s = self.__word_size
+    counted_words = counter.get_written_words()
+    if counted_words > word_limit:
+      print("Error: Assembled source code needs "
+        f"{counted_words}x{w_s}-bit words ({counted_words*w_s} bits) "
+        "bits but SRAM.v capacity is only "
+        f"{word_limit}x{w_s}-bit words ({word_limit*w_s} bits).")
+      return -1
+
+    return 0
+
+  def write_output(self, writer: Writer) -> None:
+    translator = Translator(self.__labels, self.__word_size, writer)
+    # Write instructions and numeric values translated to binary words
+    # to output.
+    self.__parse_with_worker(translator)
+
+# Command design pattern
+class Command(object):
+  def __init__(self, function_) -> None:
+    self.__function = function_
+
+  def execute(self, parameter = None) -> object:
+    return self.__function(parameter)
+
+def assemble_to_sram_v_file(source: TextIOWrapper, target_path: str) -> int:
+  # In SRAM.v there are 4 lines
+    # defparam spx9_inst_0.INIT_RAM_0{0-3} = 288'h{72 hex digits};
+  # Line 'defparam spx9_inst_0.INIT_RAM_00 = 288'h{72 hex digits};'
+  # is at position 1217.
+  first_init_ram_position = 1217
+  lines = 4
+  hex_digits = 72 # SRAM module has 128 9-bit words.
+  word_size = 9 # The target processor's word size in bits
+  # n in INIT_RAM_n must be in range <0, 63>. This information comes from
+  # '<Gowin_V1.9.8.03_Education directory>/IDE/bin/prim_syn.v'
+  # file containing 'headers' of the IP cores available in Gowin FPGA Designer.
+  prefix = ("defparam spx9_inst_0.INIT_RAM_{:02X} = " +
+    "{}".format(hex_digits * 4) + "'h")
+  suffix = (";\n")
+
+  if not os.path.isfile(target_path):
+    print("File '{target_path}' does not exist.")
+    return -1
+
+  with open(target_path, "r+", encoding="utf_8") as file:
+    file.seek(first_init_ram_position)
+
+    for line_index in range(lines):
+      line = file.readline()
+
+      formatted_prefix = prefix.format(line_index)
+      if not line.startswith(formatted_prefix):
+        print(f"Error: Line '{line}' in file '{target_path}' does not start "
+          f"with '{formatted_prefix}'.")
+        return -2
+
+      if not line.endswith(suffix):
+        print(f"Error: Line '{line}' in file '{target_path}' does not end "
+          f"with '{suffix}'.")
+        return -3
+
+      # ... 288'h000 ... 000;
+      #          ^line[len(formatted_prefix)]
+      if len(line) - len(suffix) - len(formatted_prefix) != hex_digits:
+        print(f"Error: Line '{line}' in file '{target_path}' does not contain "
+          f"exactly '{hex_digits}' hexadecimal digits.")
+        return -4
+
+    line_size = (hex_digits * 4) // word_size
+
+    asm = Assembler(source, word_size)
+    if asm.validate_syntax_and_list_labels() != 0:
+      return -5
+    if asm.validate_label_references() != 0:
+      return -6
+    if asm.validate_code_size(lines * line_size) != 0:
+      return -7
+
+    file.seek(first_init_ram_position)
+    writer = SRAMvWriter(file, word_size, line_size,
+      Command(lambda line_index: prefix.format(line_index)),
+      Command(lambda _: suffix)) # Ignore command parameter.
+    asm.write_output(writer)
+    writer.pad(line_size * lines)
+    file.write("\nendmodule //SRAM\n")
+
+  return 0
+
+def assemble_to_stdout(source: TextIOWrapper) -> None:
+  asm = Assembler(source, 9)
+  if asm.validate_syntax_and_list_labels() != 0:
+    return -1
+  if asm.validate_label_references() != 0:
+    return -2
+
+  asm.write_output(TextIOWriter(sys.stdout))
+
+  return 0
 
 def parse_commandline_arguments():
   # https://stackoverflow.com/a/30493366
@@ -695,10 +929,9 @@ def main():
   with open(args.source, "r", encoding=source_encoding) as source:
     # Check if 'target' parameter is specified.
     if args.target is not None:
-      with open(args.target, "w", encoding="utf_8") as file_stream:
-        assemble(source, file_stream)
+      assemble_to_sram_v_file(source, args.target)
     else:
-      assemble(source, sys.stdout)
+      assemble_to_stdout(source)
 
   return 0
 
