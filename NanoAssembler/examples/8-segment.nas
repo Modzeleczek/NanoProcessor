@@ -37,7 +37,7 @@ before_data:
 
   ; Consecutive words written into GPIO register.
   ; We iterate over them using R2 counter starting at the bottom end.
-  0b000 ; DIO = 0; RCLK = 0; RCLK = 0
+  0b000 ; DIO = 0; RCLK = 0; SCLK = 0
   0b010 ; RCLK: 0 -> 1
   0b001 ; tick
   0b000 ; 0
