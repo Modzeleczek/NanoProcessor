@@ -5,26 +5,30 @@
   0b01_0000000
 
 init_counter:
-  ; Data word counter: <index (counted from 0 at the top end) of data word at the bottom end> + 2
+  ; Data word counter: <index (counted from 0 at the top end)
+  ; of data word at the bottom end> + 2
   mvi R2 ; R2 = 35
   35
 
 after_init_counter:
-  mvi R4 ; Remember the address of the first instruction inside the loop over data words
+  ; Remember the address of the first instruction inside
+  ; the loop over data words.
+  mvi R4
   :inside_loop
 
   sub R2 R0 ; R2 -= 1
 
-  mvnz PC R4 ; If R2 != 0, jump to the inside of the loop
+  mvnz PC R4 ; If R2 != 0, jump to the inside of the loop.
 
-  mvi PC ; Otherwise, jump to resetting the loop counter
+  mvi PC ; Otherwise, jump to resetting the loop counter.
   :init_counter
 
 inside_loop:
   mvi R5 ; R5 = <address of the top end word> - 1
   :before_data
 
-  ; In R5 remember the current data word index (<top end word address> + <counter>)
+  ; In R5 remember the current data word index
+  ; (<top end word address> + <counter>).
   add R5 R2 ; R5 += R2
 
   ld R3 R5 ; R3 = [R5]
