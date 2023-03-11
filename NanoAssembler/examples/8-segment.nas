@@ -41,6 +41,8 @@ before_data:
 
   ; Consecutive words written into GPIO register.
   ; We iterate over them using R2 counter starting at the bottom end.
+  ; Finally, the full loop cycle writes 0001_0000_00010001 to
+  ; the dual 8-bit shift register of the 8-segment display module.
   0b000 ; DIO = 0; RCLK = 0; SCLK = 0
   0b010 ; RCLK: 0 -> 1
   0b001 ; tick
