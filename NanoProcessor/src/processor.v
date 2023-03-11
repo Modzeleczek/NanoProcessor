@@ -153,7 +153,8 @@ module processor(
         ADDR_in = 1'b1;
       end
       T1: begin // FSM output signals in state T1
-        // RAM wystawia kod instrukcji na DIN
+        /* At the next clock edge SRAM module will put the read
+        word (instruction or data) to DIN input of the processor */
         incr_PC = 1'b1;
       end
       T2: begin // FSM output signals in state T2
