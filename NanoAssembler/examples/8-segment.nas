@@ -1,8 +1,16 @@
-  mvi R0 ; R0 = 1
+  mvi R1 ; R1 = GPIO mode register address in processor's address space
+  0b01_0000000
+  ; Using R3, set 3 lowest bits of GPIO mode register to 1 in order
+  ; to make the 3 lowest GPIO pins work in output mode.
+  mvi R3
+  0b000000_111
+  st R3 R1 ; [R1] = R3
+
+  mvi R0 ; R0 = constant 1 for decrementation
   1
 
-  mvi R1 ; R1 = GPIO register address in processor's address space
-  0b01_0000000
+  mvi R1 ; R1 = GPIO register address
+  0b10_0000000
 
 init_counter:
   ; Data word counter: <index (counted from 0 at the top end)
