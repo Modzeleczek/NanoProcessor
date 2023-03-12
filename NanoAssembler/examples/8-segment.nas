@@ -2,8 +2,9 @@
   0b01_0000000
   ; Using R3, set 3 lowest bits of GPIO mode register to 1 in order
   ; to make the 3 lowest GPIO pins work in output mode.
+  ; Set the 4th GPIO pin to input mode.
   mvi R3
-  0b000000_111
+  0b00000_0111
   st R3 R1 ; [R1] = R3
 
   mvi R0 ; R0 = constant 1 for decrementation
@@ -13,6 +14,69 @@
   0b10_0000000
 
 init_counter:
+  mvi R6
+  :swap_digits
+  ; Load GPIO register content into R2.
+  ld R2 R1 ; R2 = [R1]
+  mvi R3
+  0b1000
+  ; Clear all GPIO bits except the 4th lowest which is the read input value.
+  and R2 R3
+  ; When the button is released, the 4th lowest bit of R2 is 1 because of FPGA's
+  ; internal pull-up resistor.
+  sub R2 R3 ; R2 -= 0b1000
+  ; When the button is pressed, the 4th lowest bit of R2 is 0.
+  ; Subtracting 0b1000 from 0, we get a value not equal to 0 so 'mvnz' jumps
+  ; to ':swap_digits' label.
+  mvnz PC R6
+
+  mvi R6
+  :first_display_position
+  mvi R2
+  0b100
+  st R2 R6 ; [R6] = R2
+
+  sub R6 R0
+  mvi R2
+  0b101
+  st R2 R6 ; [R6] = R2
+
+  sub R6 R0
+  mvi R2
+  0b000
+  st R2 R6 ; [R6] = R2
+
+  sub R6 R0
+  mvi R2
+  0b001
+  st R2 R6 ; [R6] = R2
+
+  mvi PC
+  :after_swap_digits
+
+swap_digits:
+  mvi R6
+  :first_display_position
+  mvi R2
+  0b000
+  st R2 R6 ; [R6] = R2
+
+  sub R6 R0
+  mvi R2
+  0b001
+  st R2 R6 ; [R6] = R2
+
+  sub R6 R0
+  mvi R2
+  0b100
+  st R2 R6 ; [R6] = R2
+
+  sub R6 R0
+  mvi R2
+  0b101
+  st R2 R6 ; [R6] = R2
+
+after_swap_digits:
   ; Data word counter: <index (counted from 0 at the top end)
   ; of data word at the bottom end> + 2
   mvi R2 ; R2 = 35
@@ -60,6 +124,7 @@ before_data:
   0b001 ; tick
   0b000 ; 0
   0b101 ; tick
+first_display_position:
   0b100 ; 1
   0b001 ; tick
   0b000 ; 0
