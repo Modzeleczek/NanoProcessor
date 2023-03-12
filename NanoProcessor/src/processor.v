@@ -30,7 +30,7 @@ module processor(
     T4 = 3'b100, T5 = 3'b101;
   // Instruction binary codes
   localparam [2:0] mv = 3'b000, mvi = 3'b001, add = 3'b010, sub = 3'b011,
-    ld = 3'b100, st = 3'b101, mvnz = 3'b110;
+    ld = 3'b100, st = 3'b101, mvnz = 3'b110, and_ = 3'b111;
 
   reg [8:0] Bus; // Output signal of the 9-bit bus multiplexer
   /* One-hot (1-of-8) signals indicating registers
@@ -79,7 +79,6 @@ module processor(
 
   reg A_in, // Register A enable for writing
   G_in, // Register G enable for writing
-  AddSub, // 0 to add and 1 to subtract with the arithmetic logic unit
   ADDR_in, // Register ADDR enable for writing
   DOUT_in, // Register DOUT enable for writing
   W_D, // Register W input signal
@@ -87,7 +86,9 @@ module processor(
   finish executing the current instruction on the next 'Clock' positive edge. */
   Done;
 
-  wire [8:0] Sum; // Output signal of the arithmetic logic unit
+  reg [1:0] alu_op; // Arithmetic logic unit operation code
+
+  wire [8:0] alu_res; // Output signal of the arithmetic logic unit
 
   /* Below are output and input of an implicit register
   (consisting of 3 D flip-flops) storing the current FSM state code. */
@@ -131,14 +132,14 @@ module processor(
     Assignment of multiple signals in one line. It is equivalent to
     writing 'Done = 1'b0; G_in = 1'b0...' and 'R_in = 8'b0000_0000;
     R_out = 8'b0000_0000;'
-    {Done, G_in, G_out, A_in, AddSub, DIN_out, IR_in, incr_PC,
+    {Done, G_in, G_out, A_in, alu_op, DIN_out, IR_in, incr_PC,
       ADDR_in, DOUT_in, W_D} = 12'b000000000000;
     {R_in, R_out} = 16'b00000000_00000000; */
     Done = 1'b0;
     G_in = 1'b0;
     G_out = 1'b0;
     A_in = 1'b0;
-    AddSub = 1'b0;
+    alu_op = 2'b00;
     DIN_out = 1'b0;
     R_in = 8'b0000_0000;
     R_out = 8'b0000_0000;
@@ -172,7 +173,7 @@ module processor(
             ADDR_in = 1'b1;
             incr_PC = 1'b1;
           end
-          add, sub: begin
+          add, sub, and_: begin
             R_out = Xreg;
             A_in = 1'b1;
           end
@@ -195,11 +196,12 @@ module processor(
           add: begin
             R_out = Yreg;
             G_in = 1'b1;
+            alu_op = 2'b00;
           end
           sub: begin
             R_out = Yreg;
             G_in = 1'b1;
-            AddSub = 1'b1;
+            alu_op = 2'b01;
           end
           /* ld: In state T4 the processor is waiting
           for i/o device to put read data to DIN. */
@@ -209,6 +211,11 @@ module processor(
             W_D = 1'b1;
             Done = 1'b1;
           end
+          and_: begin
+            R_out = Yreg;
+            G_in = 1'b1;
+            alu_op = 2'b10;
+          end
         endcase
       T5: // FSM output signals in state T5
         case (I)
@@ -217,7 +224,7 @@ module processor(
             R_in = Xreg;
             Done = 1'b1;
           end
-          add, sub: begin
+          add, sub, and_: begin
             G_out = 1'b1;
             R_in = Xreg;
             Done = 1'b1;
@@ -247,14 +254,14 @@ module processor(
   register #(9) reg_6(Bus, R_in[6], Clock, R6);
   counter #(9) cnt_pc(Resetn, incr_PC, R_in[7], Clock, Bus, PC);
   register #(9) reg_A(Bus, A_in, Clock, A);
-  register #(9) reg_G(Sum, G_in, Clock, G);
+  register #(9) reg_G(alu_res, G_in, Clock, G);
   register #(9) reg_IR(DIN, IR_in, Clock, IR);
   register #(9) reg_ADDR(Bus, ADDR_in, Clock, ADDR);
   register #(9) reg_DOUT(Bus, DOUT_in, Clock, DOUT);
   register #(1) reg_W(W_D, 1'b1, Clock, W);
 
   // Arithmetic logic unit
-  ripple_carry_adder_subtractor #(9) alu(A, Bus, AddSub, Sum);
+  arithmetic_logic_unit #(9) alu(A, Bus, alu_op, alu_res);
 
   // Main 9-bit bus multiplexer
   wire [0:9] mux_s;

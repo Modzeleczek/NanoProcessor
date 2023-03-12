@@ -57,7 +57,7 @@ class Instruction(Token):
     return self.CODES[self.raw]
 
 class RegisterInstruction(Instruction):
-  CODES = { "mv":0, "add":2, "sub":3, "ld":4, "st":5, "mvnz":6 }
+  CODES = { "mv":0, "add":2, "sub":3, "ld":4, "st":5, "mvnz":6, "and":7 }
 
   def __init__(self, token: Token) -> None:
     super().__init__(token)
