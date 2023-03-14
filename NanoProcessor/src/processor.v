@@ -19,10 +19,10 @@ module processor(
   
   DOUT, // Data to be written to the address in 'ADDR'
 
-  /* Register W output signal used to inform the i/o device addressed
+  /* Register Write output signal used to inform the i/o device addressed
   in 'ADDR' that it should read data from 'DOUT'.
   (if 0, the i/o device should write data to processor's 'DIN' input). */
-  output W);
+  output Write);
 
   // The processor's control unit is a finite-state machine (FSM).
   // FSM states
@@ -81,7 +81,7 @@ module processor(
   G_in, // Register G enable for writing
   ADDR_in, // Register ADDR enable for writing
   DOUT_in, // Register DOUT enable for writing
-  W_D, // Register W input signal
+  Write_D, // Register Write input signal
   /* Used by FSM to inform anybody interested that the processor will
   finish executing the current instruction on the next 'Clock' positive edge. */
   Done;
@@ -133,7 +133,7 @@ module processor(
     writing 'Done = 1'b0; G_in = 1'b0...' and 'R_in = 8'b0000_0000;
     R_out = 8'b0000_0000;'
     {Done, G_in, G_out, A_in, alu_op, DIN_out, IR_in, incr_PC,
-      ADDR_in, DOUT_in, W_D} = 12'b000000000000;
+      ADDR_in, DOUT_in, Write_D} = 12'b000000000000;
     {R_in, R_out} = 16'b00000000_00000000; */
     Done = 1'b0;
     G_in = 1'b0;
@@ -147,7 +147,7 @@ module processor(
     incr_PC = 1'b0;
     ADDR_in = 1'b0;
     DOUT_in = 1'b0;
-    W_D = 1'b0;
+    Write_D = 1'b0;
     case (Tstep_Q)
       T0: begin // FSM output signals in state T0
         R_out[7] = 1'b1;
@@ -208,7 +208,7 @@ module processor(
           st: begin
             R_out = Xreg;
             DOUT_in = 1'b1;
-            W_D = 1'b1;
+            Write_D = 1'b1;
             Done = 1'b1;
           end
           and_: begin
@@ -258,7 +258,7 @@ module processor(
   register #(9) reg_IR(DIN, IR_in, Clock, IR);
   register #(9) reg_ADDR(Bus, ADDR_in, Clock, ADDR);
   register #(9) reg_DOUT(Bus, DOUT_in, Clock, DOUT);
-  register #(1) reg_W(W_D, 1'b1, Clock, W);
+  register #(1) reg_Write(Write_D, 1'b1, Clock, Write);
 
   // Arithmetic logic unit
   arithmetic_logic_unit #(9) alu(A, Bus, alu_op, alu_res);
