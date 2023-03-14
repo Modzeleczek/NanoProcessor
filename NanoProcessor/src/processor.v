@@ -252,7 +252,7 @@ module processor(
   register #(9) reg_4(Bus, R_in[4], Clock, R4);
   register #(9) reg_5(Bus, R_in[5], Clock, R5);
   register #(9) reg_6(Bus, R_in[6], Clock, R6);
-  counter #(9) cnt_pc(Resetn, incr_PC, R_in[7], Clock, Bus, PC);
+  counter #(9) cnt_pc(Bus, Resetn, incr_PC, R_in[7], Clock, PC);
   register #(9) reg_A(Bus, A_in, Clock, A);
   register #(9) reg_G(alu_res, G_in, Clock, G);
   register #(9) reg_IR(DIN, IR_in, Clock, IR);
