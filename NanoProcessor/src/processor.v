@@ -24,8 +24,12 @@ module processor(
   (if 0, the i/o device should write data to processor's 'DIN' input). */
   output Write);
 
-  // The processor's control unit is a finite-state machine (FSM).
-  // FSM states
+  /* The processor's control unit is a finite state machine (FSM).
+  Below are FSM state codes. During execution of an instruction,
+  every 'Clock' positive edge makes FSM go to the next state,
+  i.e. T0 -> T1 -> T2 -> T3 -> T4 -> T5 -> T0. Some instructions
+  take less than 6 clock cycles, e.g. for an instruction taking 4 cycles,
+  the transitions are: T0 -> T1 -> T2 -> T3 -> T0. */
   localparam [2:0] T0 = 3'b000, T1 = 3'b001, T2 = 3'b010, T3 = 3'b011,
     T4 = 3'b100, T5 = 3'b101;
   // Instruction binary codes
