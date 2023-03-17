@@ -852,22 +852,22 @@ def parse_commandline_arguments():
   # https://stackoverflow.com/a/30493366
   # https://docs.python.org/3/library/argparse.html
   parser = argparse.ArgumentParser(prog="NanoAssembler",
-    description="Translate a file written in NanoProcessor assembly language "
-    "to NanoProcessor machine (binary) language.",
+    description="Translate a file written in NanoAssembly language "
+    "to NanoProcessor machine (binary) code.",
     add_help=False) # Disable the automatic addition of '-h' argument.
 
-  parser.add_argument("source", type=str, help="File in NanoProcessor "
-    "assembly language.")
+  parser.add_argument("source", type=str, help="Path to a text file written in "
+    "NanoAssembly language.")
 
   parser.add_argument('-h', action='help', default=argparse.SUPPRESS,
     help='Show this help message and exit.')
 
   parser.add_argument("-e", type=str, dest="source_encoding",
-    help="Specify encoding of the source file. See 'codecs' module "
+    help="Specify encoding of the source file. See 'codecs' Python module "
     "for the list of supported encodings "
     "(https://docs.python.org/3/library/codecs.html#standard-encodings). "
     "If source encoding is not specified, NanoAssembler attempts to determine "
-    "it using 'chardet' library as long as the user has it installed. "
+    "it using 'chardet' Python module as long as the user has it installed. "
     "Do not use automatic encoding detection for big files that cannot "
     "entirely fit in Python script's memory. Such a program probably "
     "would not fit in NanoProcessor's memory anyway.")
@@ -875,7 +875,7 @@ def parse_commandline_arguments():
   parser.add_argument("-o", type=str, dest="target",
     help="Overwrite initial memory content in specified SRAM module "
     "Verilog file (SRAM.v). If this argument is not used, "
-    "the binary code is written to stdout.")
+    "the machine code is written to stdout.")
 
   # An optional positional argument can be used instead of -o.
   # parser.add_argument("target", type=str, nargs="?",
