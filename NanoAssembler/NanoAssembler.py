@@ -16,7 +16,7 @@ class Token(object):
     self.line = line
     self.column = column
 
-  def type_name(self) -> str: # Consider this public abstract method.
+  def description(self) -> str: # Consider this public abstract method.
     raise NotImplementedError("Please implement this method")
 
 class Newline(Token):
@@ -28,7 +28,7 @@ class Newline(Token):
       return Newline(token)
     return None
 
-  def type_name(self) -> str:
+  def description(self) -> str:
     return "newline"
 
 class LabelDeclaration(Token):
@@ -43,8 +43,8 @@ class LabelDeclaration(Token):
   def name(self) -> str:
     return self.raw[:-1] # Skip ":".
 
-  def type_name(self) -> str:
-    return "label declaration"
+  def description(self) -> str:
+    return f"label declaration '{self.raw}'"
 
 class Instruction(Token):
   def __init__(self, token: Token) -> None:
@@ -68,8 +68,8 @@ class RegisterInstruction(Instruction):
       return RegisterInstruction(token)
     return None
 
-  def type_name(self) -> str:
-    return "register instruction"
+  def description(self) -> str:
+    return f"register instruction '{self.raw}'"
 
 class ImmediateInstruction(Instruction):
   # 'mvi' is 'immediate' instruction whose second operand must
@@ -85,8 +85,8 @@ class ImmediateInstruction(Instruction):
       return ImmediateInstruction(token)
     return None
 
-  def type_name(self) -> str:
-    return "immediate instruction"
+  def description(self) -> str:
+    return f"immediate instruction '{self.raw}'"
 
 class Register(Instruction):
   CODES = { "R0":0, "R1":1, "R2":2, "R3":3, "R4":4, "R5":5, "R6":6, "PC":7 }
@@ -100,8 +100,8 @@ class Register(Instruction):
       return Register(token)
     return None
 
-  def type_name(self) -> str:
-    return "register"
+  def description(self) -> str:
+    return f"register name '{self.raw}'"
 
 class NumericValue(Token):
   def __init__(self, token: Token) -> None:
@@ -122,8 +122,8 @@ class LabelReference(NumericValue):
   def name(self) -> str:
     return self.raw[1:] # Skip ":".
 
-  def type_name(self) -> str:
-    return "label reference"
+  def description(self) -> str:
+    return f"label reference '{self.raw}'"
 
   def bit_count(self) -> int:
     return 9
@@ -192,8 +192,8 @@ class Literal(NumericValue):
   def numeric_value(self) -> int:
     return Literal.__value(self.raw)
 
-  def type_name(self) -> str:
-    return "numeric literal"
+  def description(self) -> str:
+    return f"literal '{self.raw}'"
 # Token types
 
 # Parser workers
@@ -289,8 +289,8 @@ class Parser(object):
   class State(object):
     # Single '_' means protected method access modifier.
     def _error_unexpected(self, token: Token) -> str:
-      return ("Error: Unexpected {} '{}' in line {}, column {}."
-        .format(token.type_name(), token.raw, token.line, token.column))
+      return ("Error: Unexpected {} in line {}, column {}."
+        .format(token.description(), token.line, token.column))
 
   class Initial(State):
     def parse_token(self, ctx: Parser, token: Token) -> str:
