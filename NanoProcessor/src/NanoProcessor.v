@@ -25,18 +25,12 @@ module NanoProcessor(
   register #(9) reg_mode(DOUT, mode_wr_en, clock, mode_out);
   GPIO_register #(9) reg_GPIO(clock, mode_out, DOUT, gpio_wr_en, gpio);
 
+  wire [8:0] sram_out;
   /* Two highest bits of ADDR select which input/output device
   passes its output to processor bus input: SRAM,
   GPIO mode register or GPIO register. */
-  reg [8:0] din_mux;
-  assign DIN = din_mux;
-  wire [8:0] sram_out;
-  always @ (*)
-    case (ADDR[8:7])
-      default: din_mux = sram_out;
-      2'b01: din_mux = mode_out;
-      2'b10: din_mux = gpio;
-    endcase
+  multiplexer_4 DIN_multiplexer(sram_out, mode_out, gpio, 9'd0,
+    ADDR[8:7], DIN);
 
   // SPX9 (Single Port 18K BSRAM); UG285E.pdf, page 18, chapter 3.2
   SRAM sram(
