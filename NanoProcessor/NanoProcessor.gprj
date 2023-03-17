@@ -10,6 +10,7 @@
         <File path="src/SRAM.v" type="file.verilog" enable="1"/>
         <File path="src/arithmetic_logic_unit.v" type="file.verilog" enable="1"/>
         <File path="src/counter.v" type="file.verilog" enable="1"/>
+        <File path="src/decoder_2_to_4.v" type="file.verilog" enable="1"/>
         <File path="src/decoder_3_to_8.v" type="file.verilog" enable="1"/>
         <File path="src/full_adder.v" type="file.verilog" enable="1"/>
         <File path="src/processor.v" type="file.verilog" enable="1"/>

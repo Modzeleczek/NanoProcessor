@@ -15,11 +15,11 @@ module NanoProcessor(
   wire Write;
   processor proc(DIN, 1'b1, clock, 1'b1, ADDR, DOUT, Write);
 
-  wire sram_wr_en = ~ADDR[7] & ~ADDR[8] & Write;
-  // General-purpose input/output
-  wire mode_wr_en = ADDR[7] & ~ADDR[8] & Write;
-  wire gpio_wr_en = ~ADDR[7] & ADDR[8] & Write;
+  wire ignore, sram_wr_en, mode_wr_en, gpio_wr_en;
+  decoder_2_to_4 IO_write_selector(ADDR[8:7], Write,
+    {ignore, gpio_wr_en, mode_wr_en, sram_wr_en});
 
+  // General-purpose input/output
   wire [8:0] mode_out;
   // Register for setting input or output mode of GPIO pins.
   register #(9) reg_mode(DOUT, mode_wr_en, clock, mode_out);
